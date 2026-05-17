@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      DATA_DIR: /app/data
+
+  extractor:
+    build: ./extractor
+    volumes:
+      - ./data:/app/data
