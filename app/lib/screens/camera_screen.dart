@@ -1,28 +1,92 @@
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/challenge.dart';
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
 import '../theme/colors.dart';
 import '../theme/text_styles.dart';
 
-class CameraScreen extends StatefulWidget {
+class CameraScreen extends ConsumerStatefulWidget {
   final Challenge? challenge;
   const CameraScreen({super.key, this.challenge});
 
   @override
-  State<CameraScreen> createState() => _CameraScreenState();
+  ConsumerState<CameraScreen> createState() => _CameraScreenState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
+class _CameraScreenState extends ConsumerState<CameraScreen> {
+  CameraController? _controller;
+  bool _initialized = false;
   bool _recording = false;
+  bool _uploading = false;
   bool _submitted = false;
+  String? _videoPath;
+  String? _error;
 
-  void _toggleRecord() {
-    setState(() => _recording = !_recording);
+  @override
+  void initState() {
+    super.initState();
+    if (widget.challenge != null) _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        setState(() => _error = 'No camera found');
+        return;
+      }
+      _controller = CameraController(cameras.first, ResolutionPreset.high, enableAudio: true);
+      await _controller!.initialize();
+      if (mounted) setState(() => _initialized = true);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggleRecord() async {
+    if (_controller == null || !_initialized) return;
+
     if (_recording) {
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) setState(() { _recording = false; _submitted = true; });
+      final file = await _controller!.stopVideoRecording();
+      setState(() {
+        _recording = false;
+        _videoPath = file.path;
+      });
+    } else {
+      await _controller!.startVideoRecording();
+      setState(() => _recording = true);
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_videoPath == null) return;
+    setState(() => _uploading = true);
+    final token = ref.read(authProvider).token ?? '';
+    final result = await ApiService.uploadVideo(
+      challengeId: widget.challenge!.id,
+      videoPath: _videoPath!,
+      token: token,
+    );
+    if (mounted) {
+      setState(() {
+        _uploading = false;
+        _submitted = result['submission_id'] != null || result['error'] == null;
       });
     }
   }
+
+  void _retake() => setState(() {
+        _videoPath = null;
+        _submitted = false;
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -48,47 +112,75 @@ class _CameraScreenState extends State<CameraScreen> {
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Stack(
+          fit: StackFit.expand,
           children: [
-            const SizedBox.expand(
-              child: ColoredBox(
-                color: Color(0xFF111111),
-                child: Center(
-                  child: Icon(Icons.videocam, size: 80, color: Color(0xFF333333)),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 16,
-              left: 16,
-              child: GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
-                  child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
-                ),
-              ),
-            ),
+            _buildPreview(),
+            _buildBackButton(),
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Colors.black, Colors.black.withValues(alpha: 0)],
-                  ),
-                ),
-                child: _submitted ? const _SuccessState() : _RecordingControls(challenge: c, recording: _recording, onToggle: _toggleRecord),
-              ),
+              child: _buildControls(c),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPreview() {
+    if (_error != null) {
+      return Center(child: Text(_error!, style: const TextStyle(color: Colors.white)));
+    }
+    if (_videoPath != null) {
+      return const ColoredBox(
+        color: Color(0xFF111111),
+        child: Center(child: Icon(Icons.videocam_rounded, size: 80, color: AppColors.primary)),
+      );
+    }
+    if (!_initialized || _controller == null) {
+      return const ColoredBox(
+        color: Color(0xFF111111),
+        child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+    return CameraPreview(_controller!);
+  }
+
+  Widget _buildBackButton() {
+    return Positioned(
+      top: 16,
+      left: 16,
+      child: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildControls(Challenge c) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Colors.black, Colors.black.withValues(alpha: 0)],
+        ),
+      ),
+      child: _submitted
+          ? _SuccessState(onBack: () => Navigator.pop(context))
+          : _videoPath != null
+              ? _PreviewControls(uploading: _uploading, onSubmit: _submit, onRetake: _retake)
+              : _RecordingControls(challenge: c, recording: _recording, initialized: _initialized, onToggle: _toggleRecord),
     );
   }
 }
@@ -96,9 +188,15 @@ class _CameraScreenState extends State<CameraScreen> {
 class _RecordingControls extends StatelessWidget {
   final Challenge challenge;
   final bool recording;
+  final bool initialized;
   final VoidCallback onToggle;
 
-  const _RecordingControls({required this.challenge, required this.recording, required this.onToggle});
+  const _RecordingControls({
+    required this.challenge,
+    required this.recording,
+    required this.initialized,
+    required this.onToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +219,7 @@ class _RecordingControls extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         GestureDetector(
-          onTap: onToggle,
+          onTap: initialized ? onToggle : null,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: 72,
@@ -136,7 +234,7 @@ class _RecordingControls extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          recording ? 'Recording...' : 'Tap to record',
+          recording ? 'Recording...' : initialized ? 'Tap to record' : 'Initializing...',
           style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
         ),
       ],
@@ -144,8 +242,52 @@ class _RecordingControls extends StatelessWidget {
   }
 }
 
+class _PreviewControls extends StatelessWidget {
+  final bool uploading;
+  final VoidCallback onSubmit;
+  final VoidCallback onRetake;
+
+  const _PreviewControls({required this.uploading, required this.onSubmit, required this.onRetake});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const Icon(Icons.check_circle_outline, color: Colors.white, size: 48),
+        const SizedBox(height: 12),
+        const Text('Video recorded', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+        const SizedBox(height: 24),
+        if (uploading)
+          const CircularProgressIndicator(color: Colors.white)
+        else ...[
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: onSubmit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: Text('Submit', style: AppTextStyles.buttonLabel),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: onRetake,
+            child: const Text('Retake', style: TextStyle(color: Colors.white70, fontSize: 14)),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _SuccessState extends StatelessWidget {
-  const _SuccessState();
+  final VoidCallback onBack;
+  const _SuccessState({required this.onBack});
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +307,7 @@ class _SuccessState extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: onBack,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: AppColors.textPrimary,
