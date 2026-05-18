@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/challenge.dart';
+import '../theme/colors.dart';
+import '../theme/text_styles.dart';
 
 class CameraScreen extends StatefulWidget {
   final Challenge? challenge;
@@ -33,9 +35,9 @@ class _CameraScreenState extends State<CameraScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Film', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Color(0xFF0A0A0A), letterSpacing: -0.5)),
+              Text('Film', style: AppTextStyles.screenTitle),
               const SizedBox(height: 8),
-              const Text('Pick a challenge from the feed to start filming.', style: TextStyle(fontSize: 14, color: Color(0xFF6B7280))),
+              Text('Pick a challenge from the feed to start filming.', style: AppTextStyles.bodyMedium),
             ],
           ),
         ),
@@ -47,10 +49,12 @@ class _CameraScreenState extends State<CameraScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            Container(
-              color: const Color(0xFF111111),
-              child: const Center(
-                child: Icon(Icons.videocam, size: 80, color: Color(0xFF333333)),
+            const SizedBox.expand(
+              child: ColoredBox(
+                color: Color(0xFF111111),
+                child: Center(
+                  child: Icon(Icons.videocam, size: 80, color: Color(0xFF333333)),
+                ),
               ),
             ),
             Positioned(
@@ -61,7 +65,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 child: Container(
                   width: 40,
                   height: 40,
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
                   child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
                 ),
               ),
@@ -76,52 +80,10 @@ class _CameraScreenState extends State<CameraScreen> {
                   gradient: LinearGradient(
                     begin: Alignment.bottomCenter,
                     end: Alignment.topCenter,
-                    colors: [Colors.black, Colors.black.withOpacity(0)],
+                    colors: [Colors.black, Colors.black.withValues(alpha: 0)],
                   ),
                 ),
-                child: _submitted
-                    ? _SuccessState()
-                    : Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(c.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
-                                const SizedBox(height: 4),
-                                Text(c.description, style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.7))),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          GestureDetector(
-                            onTap: _toggleRecord,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              width: 72,
-                              height: 72,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: _recording ? const Color(0xFFDC2626) : Colors.white,
-                                border: Border.all(color: Colors.white.withOpacity(0.4), width: 4),
-                              ),
-                              child: _recording
-                                  ? const Icon(Icons.stop, color: Colors.white, size: 30)
-                                  : const SizedBox(),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            _recording ? 'Recording...' : 'Tap to record',
-                            style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13),
-                          ),
-                        ],
-                      ),
+                child: _submitted ? const _SuccessState() : _RecordingControls(challenge: c, recording: _recording, onToggle: _toggleRecord),
               ),
             ),
           ],
@@ -131,7 +93,60 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 }
 
+class _RecordingControls extends StatelessWidget {
+  final Challenge challenge;
+  final bool recording;
+  final VoidCallback onToggle;
+
+  const _RecordingControls({required this.challenge, required this.recording, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(challenge.title, style: AppTextStyles.cardTitle.copyWith(color: Colors.white)),
+              const SizedBox(height: 4),
+              Text(challenge.description, style: AppTextStyles.bodySmall.copyWith(color: Colors.white.withValues(alpha: 0.7))),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        GestureDetector(
+          onTap: onToggle,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: recording ? AppColors.danger : Colors.white,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 4),
+            ),
+            child: recording ? const Icon(Icons.stop, color: Colors.white, size: 30) : const SizedBox(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          recording ? 'Recording...' : 'Tap to record',
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
+        ),
+      ],
+    );
+  }
+}
+
 class _SuccessState extends StatelessWidget {
+  const _SuccessState();
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -139,13 +154,13 @@ class _SuccessState extends StatelessWidget {
         Container(
           width: 64,
           height: 64,
-          decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle),
+          decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
           child: const Icon(Icons.check, color: Colors.white, size: 32),
         ),
         const SizedBox(height: 16),
         const Text('Submitted!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
         const SizedBox(height: 6),
-        Text('Your video is being processed.', style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.6))),
+        Text('Your video is being processed.', style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.6))),
         const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
@@ -153,12 +168,12 @@ class _SuccessState extends StatelessWidget {
             onPressed: () => Navigator.pop(context),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF0A0A0A),
+              foregroundColor: AppColors.textPrimary,
               elevation: 0,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
-            child: const Text('Back to challenges', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            child: Text('Back to challenges', style: AppTextStyles.buttonLabel.copyWith(fontSize: 15)),
           ),
         ),
       ],

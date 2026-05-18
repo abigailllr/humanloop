@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/challenge.dart';
+import '../theme/colors.dart';
+import '../theme/text_styles.dart';
 import '../widgets/challenge_card.dart';
 import 'camera_screen.dart';
 
@@ -28,26 +30,23 @@ class FeedScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'HumanLoop',
-                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Color(0xFF0A0A0A), letterSpacing: -0.5),
-                      ),
+                      Text('HumanLoop', style: AppTextStyles.screenTitle),
                       Container(
                         width: 36,
                         height: 36,
-                        decoration: const BoxDecoration(color: Color(0xFF0369A1), shape: BoxShape.circle),
+                        decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
                         child: const Icon(Icons.person, color: Colors.white, size: 20),
                       ),
                     ],
                   ),
                   const SizedBox(height: 4),
-                  const Text('Film challenges. Train robots.', style: TextStyle(fontSize: 14, color: Color(0xFF6B7280))),
+                  Text('Film challenges. Train robots.', style: AppTextStyles.bodyMedium),
                   const SizedBox(height: 24),
-                  _StatsRow(),
+                  const _StatsRow(),
                   const SizedBox(height: 28),
-                  const Text('Active Challenges', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF0A0A0A))),
+                  Text('Active Challenges', style: AppTextStyles.sectionTitle),
                   const SizedBox(height: 4),
-                  const Text('Film yourself. Earn credits.', style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF))),
+                  Text('Film yourself. Earn credits.', style: AppTextStyles.caption),
                 ],
               ),
             ),
@@ -72,14 +71,16 @@ class FeedScreen extends StatelessWidget {
 }
 
 class _StatsRow extends StatelessWidget {
+  const _StatsRow();
+
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: [
+      children: const [
         _StatCard(value: '5,151', label: 'Submissions'),
-        const SizedBox(width: 12),
+        SizedBox(width: 12),
         _StatCard(value: '4', label: 'Your credits'),
-        const SizedBox(width: 12),
+        SizedBox(width: 12),
         _StatCard(value: '5', label: 'Challenges'),
       ],
     );
@@ -97,15 +98,15 @@ class _StatCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8F9FA),
+          color: AppColors.surfaceGray,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF0369A1), letterSpacing: -0.5)),
+            Text(value, style: AppTextStyles.statValue),
             const SizedBox(height: 2),
-            Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500)),
+            Text(label, style: AppTextStyles.caption),
           ],
         ),
       ),

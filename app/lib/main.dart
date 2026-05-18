@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'theme/colors.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/feed_screen.dart';
 import 'screens/camera_screen.dart';
+import 'screens/leaderboard_screen.dart';
+import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
 
 void main() {
@@ -25,13 +29,13 @@ class HumanLoopApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'SF Pro Display',
         colorScheme: const ColorScheme.light(
-          primary: Color(0xFF0369A1),
-          surface: Color(0xFFF8F9FA),
-          onSurface: Color(0xFF0A0A0A),
+          primary: AppColors.primary,
+          surface: AppColors.surfaceGray,
+          onSurface: AppColors.textPrimary,
         ),
-        scaffoldBackgroundColor: const Color(0xFFFFFFFF),
+        scaffoldBackgroundColor: AppColors.background,
       ),
-      home: const RootNav(),
+      home: const OnboardingScreen(),
     );
   }
 }
@@ -46,40 +50,52 @@ class RootNav extends StatefulWidget {
 class _RootNavState extends State<RootNav> {
   int _index = 0;
 
+  static const _screens = [
+    FeedScreen(),
+    CameraScreen(),
+    LeaderboardScreen(),
+    HistoryScreen(),
+    ProfileScreen(),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    final screens = [
-      const FeedScreen(),
-      const CameraScreen(),
-      const ProfileScreen(),
-    ];
-
     return Scaffold(
-      body: screens[_index],
+      body: _screens[_index],
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
+          border: Border(top: BorderSide(color: AppColors.border, width: 1)),
         ),
         child: NavigationBar(
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
-          indicatorColor: const Color(0xFFE8F4FD),
+          indicatorColor: AppColors.primaryIndicator,
           selectedIndex: _index,
           onDestinationSelected: (i) => setState(() => _index = i),
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.bolt_outlined),
-              selectedIcon: Icon(Icons.bolt, color: Color(0xFF0369A1)),
+              selectedIcon: Icon(Icons.bolt, color: AppColors.primary),
               label: 'Challenges',
             ),
             NavigationDestination(
               icon: Icon(Icons.videocam_outlined),
-              selectedIcon: Icon(Icons.videocam, color: Color(0xFF0369A1)),
+              selectedIcon: Icon(Icons.videocam, color: AppColors.primary),
               label: 'Film',
             ),
             NavigationDestination(
+              icon: Icon(Icons.leaderboard_outlined),
+              selectedIcon: Icon(Icons.leaderboard, color: AppColors.primary),
+              label: 'Leaders',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.history_outlined),
+              selectedIcon: Icon(Icons.history, color: AppColors.primary),
+              label: 'History',
+            ),
+            NavigationDestination(
               icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person, color: Color(0xFF0369A1)),
+              selectedIcon: Icon(Icons.person, color: AppColors.primary),
               label: 'Profile',
             ),
           ],
