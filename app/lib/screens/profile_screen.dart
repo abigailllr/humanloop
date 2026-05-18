@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../theme/colors.dart';
+import '../theme/text_styles.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -36,7 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Profile', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Color(0xFF0A0A0A), letterSpacing: -0.5)),
+            Text('Profile', style: AppTextStyles.screenTitle),
             const SizedBox(height: 28),
             _AvatarCard(credits: _credits, submissions: _submissions),
             const SizedBox(height: 20),
@@ -49,13 +51,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: ElevatedButton(
                 onPressed: () {},
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0369A1),
+                  backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-                child: const Text('Cash Out', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                child: Text('Cash Out', style: AppTextStyles.buttonLabel),
               ),
             ),
           ],
@@ -75,7 +77,7 @@ class _AvatarCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
+        color: AppColors.surfaceGray,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -83,7 +85,7 @@ class _AvatarCard extends StatelessWidget {
           Container(
             width: 60,
             height: 60,
-            decoration: const BoxDecoration(color: Color(0xFF0369A1), shape: BoxShape.circle),
+            decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
             child: const Icon(Icons.person, color: Colors.white, size: 32),
           ),
           const SizedBox(width: 16),
@@ -91,19 +93,19 @@ class _AvatarCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Contributor', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF0A0A0A))),
+                Text('Contributor', style: AppTextStyles.cardTitle),
                 const SizedBox(height: 2),
-                Text('$submissions videos filmed', style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))),
+                Text('$submissions videos filmed', style: AppTextStyles.bodySmall),
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: const Color(0xFF16A34A).withOpacity(0.1),
+              color: AppColors.success.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Text('Active', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF16A34A))),
+            child: Text('Active', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.success)),
           ),
         ],
       ),
@@ -120,7 +122,7 @@ class _BalanceCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF0369A1),
+        color: AppColors.primary,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -148,15 +150,15 @@ class _ActivityCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF0F0F0)),
+        border: Border.all(color: AppColors.border),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Your Activity', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF0A0A0A))),
+          Text('Your Activity', style: AppTextStyles.cardTitle.copyWith(fontSize: 15)),
           const SizedBox(height: 16),
           _ActivityRow(icon: Icons.videocam_outlined, label: 'Videos Submitted', value: '$submissions'),
           const SizedBox(height: 14),
@@ -182,12 +184,12 @@ class _ActivityRow extends StatelessWidget {
         Container(
           width: 36,
           height: 36,
-          decoration: BoxDecoration(color: const Color(0xFFF0F7FF), borderRadius: BorderRadius.circular(10)),
-          child: Icon(icon, size: 18, color: const Color(0xFF0369A1)),
+          decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(10)),
+          child: Icon(icon, size: 18, color: AppColors.primary),
         ),
         const SizedBox(width: 12),
-        Expanded(child: Text(label, style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)))),
-        Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF0A0A0A))),
+        Expanded(child: Text(label, style: AppTextStyles.bodyMedium)),
+        Text(value, style: AppTextStyles.cardTitle.copyWith(fontSize: 15)),
       ],
     );
   }

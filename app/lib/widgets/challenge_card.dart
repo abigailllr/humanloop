@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/challenge.dart';
+import '../theme/colors.dart';
+import '../theme/text_styles.dart';
 
 class ChallengeCard extends StatelessWidget {
   final Challenge challenge;
@@ -9,9 +11,17 @@ class ChallengeCard extends StatelessWidget {
 
   Color get _diffColor {
     switch (challenge.difficulty) {
-      case 'Easy': return const Color(0xFF16A34A);
-      case 'Medium': return const Color(0xFFD97706);
-      default: return const Color(0xFFDC2626);
+      case 'Easy':   return AppColors.success;
+      case 'Medium': return AppColors.warning;
+      default:       return AppColors.danger;
+    }
+  }
+
+  Color get _diffBg {
+    switch (challenge.difficulty) {
+      case 'Easy':   return AppColors.successLight;
+      case 'Medium': return AppColors.warningLight;
+      default:       return AppColors.dangerLight;
     }
   }
 
@@ -24,9 +34,9 @@ class ChallengeCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFF0F0F0)),
+          border: Border.all(color: AppColors.border),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4)),
           ],
         ),
         child: Column(
@@ -34,12 +44,12 @@ class ChallengeCard extends StatelessWidget {
           children: [
             Container(
               height: 140,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0F7FF),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              decoration: const BoxDecoration(
+                color: AppColors.primaryLight,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: const Center(
-                child: Icon(Icons.videocam_outlined, size: 48, color: Color(0xFF0369A1)),
+                child: Icon(Icons.videocam_outlined, size: 48, color: AppColors.primary),
               ),
             ),
             Padding(
@@ -52,7 +62,7 @@ class ChallengeCard extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: _diffColor.withOpacity(0.1),
+                          color: _diffBg,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(challenge.difficulty, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _diffColor)),
@@ -60,20 +70,20 @@ class ChallengeCard extends StatelessWidget {
                       const Spacer(),
                       Icon(Icons.people_outline, size: 14, color: Colors.grey.shade400),
                       const SizedBox(width: 4),
-                      Text('${challenge.submissions}', style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                      Text('${challenge.submissions}', style: AppTextStyles.label.copyWith(color: Colors.grey.shade500)),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Text(challenge.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF0A0A0A))),
+                  Text(challenge.title, style: AppTextStyles.cardTitle),
                   const SizedBox(height: 4),
-                  Text(challenge.description, style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280), height: 1.4)),
+                  Text(challenge.description, style: AppTextStyles.bodySmall),
                   const SizedBox(height: 14),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: onTap,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0369A1),
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 13),
