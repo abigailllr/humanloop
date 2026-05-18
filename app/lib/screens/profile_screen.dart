@@ -1,37 +1,19 @@
 import 'package:flutter/material.dart';
-import '../services/api_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/auth_provider.dart';
 import '../theme/colors.dart';
 import '../theme/text_styles.dart';
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).user;
+    final credits = user?.credits ?? 0;
+    final submissions = user?.submissions ?? 0;
+    final name = user?.name ?? 'Contributor';
 
-class _ProfileScreenState extends State<ProfileScreen> {
-  int _credits = 0;
-  int _submissions = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final profile = await ApiService.getProfile();
-      setState(() {
-        _credits = profile['credits'] ?? _credits;
-        _submissions = profile['submissions'] ?? _submissions;
-      });
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -40,11 +22,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             Text('Profile', style: AppTextStyles.screenTitle),
             const SizedBox(height: 28),
-            _AvatarCard(credits: _credits, submissions: _submissions),
+            _AvatarCard(name: name, submissions: submissions),
             const SizedBox(height: 20),
-            _BalanceCard(credits: _credits),
+            _BalanceCard(credits: credits),
             const SizedBox(height: 20),
-            _ActivityCard(submissions: _submissions),
+            _ActivityCard(submissions: submissions),
             const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
@@ -68,9 +50,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 class _AvatarCard extends StatelessWidget {
-  final int credits;
+  final String name;
   final int submissions;
-  const _AvatarCard({required this.credits, required this.submissions});
+  const _AvatarCard({required this.name, required this.submissions});
 
   @override
   Widget build(BuildContext context) {
@@ -93,7 +75,7 @@ class _AvatarCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Contributor', style: AppTextStyles.cardTitle),
+                Text(name, style: AppTextStyles.cardTitle),
                 const SizedBox(height: 2),
                 Text('$submissions videos filmed', style: AppTextStyles.bodySmall),
               ],

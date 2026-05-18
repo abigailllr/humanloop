@@ -12,16 +12,26 @@ class ApiService {
     return data.map((j) => Challenge.fromJson(j)).toList();
   }
 
-  static Future<bool> uploadVideo(String challengeId) async {
-    final res = await http.post(
-      Uri.parse('$_base/submit/$challengeId'),
-      headers: {'Content-Type': 'application/json'},
-    );
-    return res.statusCode == 200;
+  static Future<Map<String, dynamic>> uploadVideo({
+    required String challengeId,
+    required String videoPath,
+    required String token,
+  }) async {
+    final req = http.MultipartRequest('POST', Uri.parse('$_base/submit/$challengeId'))
+      ..headers['Authorization'] = 'Bearer $token'
+      ..files.add(await http.MultipartFile.fromPath('video', videoPath));
+
+    final streamed = await req.send();
+    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode != 200) return {'error': res.body};
+    return jsonDecode(res.body);
   }
 
-  static Future<Map<String, dynamic>> getProfile() async {
-    final res = await http.get(Uri.parse('$_base/profile'));
+  static Future<Map<String, dynamic>> getProfile({required String token}) async {
+    final res = await http.get(
+      Uri.parse('$_base/profile'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
     if (res.statusCode != 200) return {};
     return jsonDecode(res.body);
   }

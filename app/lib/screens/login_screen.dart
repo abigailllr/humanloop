@@ -1,44 +1,36 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/colors.dart';
 import '../theme/text_styles.dart';
-import '../services/auth_service.dart';
+import '../providers/auth_provider.dart';
 import '../main.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
 
-class _LoginScreenState extends State<LoginScreen> {
-  bool _loading = false;
-
-  Future<void> _signIn(Future<dynamic> Function() method) async {
-    if (_loading) return;
-    setState(() => _loading = true);
-    try {
-      await method();
-      if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const RootNav()),
-          (_) => false,
-        );
+    Future<void> signIn(Future<void> Function() action) async {
+      try {
+        await action();
+        if (context.mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const RootNav()),
+            (_) => false,
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Sign-in failed: $e'), backgroundColor: AppColors.danger),
+          );
+        }
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sign-in failed: $e'), backgroundColor: AppColors.danger),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -47,8 +39,6 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             children: [
               const Spacer(flex: 2),
-
-              // Logo + wordmark
               Container(
                 width: 80,
                 height: 80,
@@ -63,15 +53,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: AppTextStyles.bodyMedium.copyWith(height: 1.5),
                 textAlign: TextAlign.center,
               ),
-
               const Spacer(flex: 2),
-
-              // Sign-in buttons
-              if (_loading)
+              if (auth.loading)
                 const CircularProgressIndicator(color: AppColors.primary)
               else ...[
                 _SocialButton(
-                  onTap: () => _signIn(AuthService.signInWithGoogle),
+                  onTap: () => signIn(ref.read(authProvider.notifier).signInWithGoogle),
                   icon: _GoogleIcon(),
                   label: 'Continue with Google',
                   backgroundColor: Colors.white,
@@ -80,14 +67,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12),
                 _SocialButton(
-                  onTap: () => _signIn(AuthService.signInWithApple),
+                  onTap: () => signIn(ref.read(authProvider.notifier).signInWithApple),
                   icon: const Icon(Icons.apple, color: Colors.white, size: 22),
                   label: 'Continue with Apple',
                   backgroundColor: AppColors.textPrimary,
                   foregroundColor: Colors.white,
                 ),
               ],
-
               const SizedBox(height: 32),
               Text(
                 'By continuing, you agree to our Terms of Service\nand Privacy Policy.',
@@ -147,7 +133,6 @@ class _SocialButton extends StatelessWidget {
   }
 }
 
-/// Simple painted Google "G" logo — avoids needing an asset file.
 class _GoogleIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -166,19 +151,18 @@ class _GooglePainter extends CustomPainter {
     final cy = size.height / 2;
     final r = size.width / 2;
 
-    // Draw colored arcs approximating the Google "G"
     final colors = [
-      const Color(0xFF4285F4), // blue
-      const Color(0xFF34A853), // green
-      const Color(0xFFFBBC05), // yellow
-      const Color(0xFFEA4335), // red
+      const Color(0xFF4285F4),
+      const Color(0xFF34A853),
+      const Color(0xFFFBBC05),
+      const Color(0xFFEA4335),
     ];
 
     final sweeps = [
-      [0.0, 1.6],   // blue — right arc
-      [1.6, 1.6],   // green — bottom arc
-      [3.2, 0.8],   // yellow — left arc
-      [4.0, 2.28],  // red — top arc
+      [0.0, 1.6],
+      [1.6, 1.6],
+      [3.2, 0.8],
+      [4.0, 2.28],
     ];
 
     final paint = Paint()
@@ -196,7 +180,6 @@ class _GooglePainter extends CustomPainter {
       );
     }
 
-    // White cutout for the "G" bar
     final whitePaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.fill;

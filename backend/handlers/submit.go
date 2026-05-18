@@ -3,49 +3,53 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"os"
 	"os/exec"
-	"path/filepath"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/abigailtech/humanloop/backend/middleware"
+	"github.com/abigailtech/humanloop/backend/models"
+	"github.com/abigailtech/humanloop/backend/storage"
 )
+
+var Store storage.Store = storage.NewLocalStore()
 
 func Submit(w http.ResponseWriter, r *http.Request) {
 	challengeID := r.PathValue("challengeId")
+	userID := r.Context().Value(middleware.UserIDKey).(string)
 
-	file, header, err := r.FormFile("video")
+	file, _, err := r.FormFile("video")
 	if err != nil {
 		http.Error(w, "no video", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
-	dir := os.Getenv("DATA_DIR")
-	if dir == "" {
-		dir = "./data/videos"
-	}
-	os.MkdirAll(dir, 0755)
-
-	dst := filepath.Join(dir, header.Filename)
-	out, _ := os.Create(dst)
-	defer out.Close()
-
-	buf := make([]byte, 32*1024*1024)
-	for {
-		n, err := file.Read(buf)
-		if n > 0 {
-			out.Write(buf[:n])
-		}
-		if err != nil {
-			break
-		}
+	path, err := Store.Save(challengeID, userID, file)
+	if err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
 	}
 
-	validation := runExtractor("validate", dst)
+	submission := models.Submission{
+		ID:          uuid.New().String(),
+		ChallengeID: challengeID,
+		UserID:      userID,
+		VideoPath:   path,
+		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
+	}
+
+	validation := runExtractor("validate", path)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"challenge_id": challengeID,
-		"file":         header.Filename,
-		"validation":   validation,
+		"submission_id": submission.ID,
+		"challenge_id":  submission.ChallengeID,
+		"user_id":       submission.UserID,
+		"video_path":    submission.VideoPath,
+		"created_at":    submission.CreatedAt,
+		"validation":    validation,
 	})
 }
 
