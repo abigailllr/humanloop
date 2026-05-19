@@ -4,6 +4,7 @@ import json
 import sys
 from pathlib import Path
 from vision import detect, hand_contacts
+from gemini import validate as gemini_validate
 
 HMDF_VERSION = "1.2"
 
@@ -54,6 +55,8 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
 
     cap.release()
 
+    validation = gemini_validate(video_path, challenge_title)
+
     return {
         "hmdf_version": HMDF_VERSION,
         "source": "humanloop",
@@ -64,6 +67,7 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
         "fps": fps,
         "frame_count": len(frames),
         "frames": frames,
+        "validation": validation,
         "metadata": {
             "task_type": "manipulation",
             "coordinate_space": "normalized",

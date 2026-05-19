@@ -62,6 +62,14 @@ type HMDFMetadata struct {
 	VisionModel     string `json:"vision_model"`
 }
 
+type HMDFValidation struct {
+	Valid      bool    `json:"valid"`
+	Confidence float64 `json:"confidence"`
+	Scene      string  `json:"scene"`
+	Reason     string  `json:"reason"`
+	Skipped    bool    `json:"skipped,omitempty"`
+}
+
 type HMDFRecord struct {
 	HMDFVersion    string       `json:"hmdf_version"`
 	Source         string       `json:"source"`
@@ -71,6 +79,7 @@ type HMDFRecord struct {
 	UserID         string       `json:"user_id"`
 	FPS            float64      `json:"fps"`
 	FrameCount     int          `json:"frame_count"`
-	Frames         []HMDFFrame  `json:"frames"`
-	Metadata       HMDFMetadata `json:"metadata"`
+	Frames         []HMDFFrame     `json:"frames"`
+	Validation     *HMDFValidation `json:"validation,omitempty"`
+	Metadata       HMDFMetadata    `json:"metadata"`
 }

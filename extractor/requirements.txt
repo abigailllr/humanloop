@@ -3,3 +3,4 @@ opencv-python==4.10.0.84
 ultralytics>=8.0.0
 pandas>=2.0.0
 pyarrow>=14.0.0
+google-generativeai>=0.8.0
