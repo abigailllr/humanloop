@@ -3,8 +3,9 @@ import mediapipe as mp
 import json
 import sys
 from pathlib import Path
+from vision import detect, hand_contacts
 
-HMDF_VERSION = "1.0"
+HMDF_VERSION = "1.2"
 
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
@@ -25,25 +26,30 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
             pose_result = pose.process(rgb)
             hands_result = hands.process(rgb)
 
-            frame_data = {
-                "t": round(frame_index / fps, 4) if fps > 0 else 0,
-                "pose": None,
-                "hands": [],
-            }
-
+            pose_landmarks = None
             if pose_result.pose_landmarks:
-                frame_data["pose"] = [
+                pose_landmarks = [
                     {"x": lm.x, "y": lm.y, "z": lm.z, "v": lm.visibility}
                     for lm in pose_result.pose_landmarks.landmark
                 ]
 
+            hand_landmarks = []
             if hands_result.multi_hand_landmarks:
                 for hand in hands_result.multi_hand_landmarks:
-                    frame_data["hands"].append(
+                    hand_landmarks.append(
                         [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in hand.landmark]
                     )
 
-            frames.append(frame_data)
+            objects = detect(rgb)
+            contacts = hand_contacts(hand_landmarks, objects)
+
+            frames.append({
+                "t": round(frame_index / fps, 4) if fps > 0 else 0,
+                "pose": pose_landmarks,
+                "hands": hand_landmarks,
+                "objects": objects,
+                "contacts": contacts,
+            })
             frame_index += 1
 
     cap.release()
@@ -63,6 +69,7 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
             "coordinate_space": "normalized",
             "pose_landmarks": 33,
             "hand_landmarks": 21,
+            "vision_model": "yolo11x",
         },
     }
 
