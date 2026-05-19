@@ -39,10 +39,22 @@ type Landmark struct {
 	V float64 `json:"v,omitempty"`
 }
 
-type ExtractedData struct {
-	SubmissionID string      `json:"submission_id"`
-	ChallengeID  string      `json:"challenge_id"`
-	FPS          float64     `json:"fps"`
-	FrameCount   int         `json:"frame_count"`
-	Frames       []PoseFrame `json:"frames"`
+type HMDFMetadata struct {
+	TaskType        string `json:"task_type"`
+	CoordinateSpace string `json:"coordinate_space"`
+	PoseLandmarks   int    `json:"pose_landmarks"`
+	HandLandmarks   int    `json:"hand_landmarks"`
+}
+
+type HMDFRecord struct {
+	HMDFVersion    string        `json:"hmdf_version"`
+	Source         string        `json:"source"`
+	SubmissionID   string        `json:"submission_id"`
+	ChallengeID    string        `json:"challenge_id"`
+	ChallengeTitle string        `json:"challenge_title"`
+	UserID         string        `json:"user_id"`
+	FPS            float64       `json:"fps"`
+	FrameCount     int           `json:"frame_count"`
+	Frames         []PoseFrame   `json:"frames"`
+	Metadata       HMDFMetadata  `json:"metadata"`
 }

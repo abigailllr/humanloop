@@ -4,14 +4,17 @@ import json
 import sys
 from pathlib import Path
 
+HMDF_VERSION = "1.0"
+
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
 
 
-def extract(video_path: str) -> dict:
+def extract(video_path: str, submission_id: str = "", challenge_id: str = "", challenge_title: str = "", user_id: str = "") -> dict:
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     frames = []
+    frame_index = 0
 
     with mp_pose.Pose() as pose, mp_hands.Hands() as hands:
         while cap.isOpened():
@@ -22,7 +25,11 @@ def extract(video_path: str) -> dict:
             pose_result = pose.process(rgb)
             hands_result = hands.process(rgb)
 
-            frame_data = {"pose": None, "hands": []}
+            frame_data = {
+                "t": round(frame_index / fps, 4) if fps > 0 else 0,
+                "pose": None,
+                "hands": [],
+            }
 
             if pose_result.pose_landmarks:
                 frame_data["pose"] = [
@@ -37,9 +44,27 @@ def extract(video_path: str) -> dict:
                     )
 
             frames.append(frame_data)
+            frame_index += 1
 
     cap.release()
-    return {"fps": fps, "frame_count": len(frames), "frames": frames}
+
+    return {
+        "hmdf_version": HMDF_VERSION,
+        "source": "humanloop",
+        "submission_id": submission_id,
+        "challenge_id": challenge_id,
+        "challenge_title": challenge_title,
+        "user_id": user_id,
+        "fps": fps,
+        "frame_count": len(frames),
+        "frames": frames,
+        "metadata": {
+            "task_type": "manipulation",
+            "coordinate_space": "normalized",
+            "pose_landmarks": 33,
+            "hand_landmarks": 21,
+        },
+    }
 
 
 def validate(video_path: str) -> dict:
@@ -65,7 +90,7 @@ def validate(video_path: str) -> dict:
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("usage: main.py <validate|extract> <video_path>")
+        print("usage: main.py <validate|extract> <video_path> [submission_id] [challenge_id] [challenge_title] [user_id]")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -74,4 +99,8 @@ if __name__ == "__main__":
     if command == "validate":
         print(json.dumps(validate(video)))
     elif command == "extract":
-        print(json.dumps(extract(video)))
+        sub_id = sys.argv[3] if len(sys.argv) > 3 else ""
+        ch_id = sys.argv[4] if len(sys.argv) > 4 else ""
+        ch_title = sys.argv[5] if len(sys.argv) > 5 else ""
+        u_id = sys.argv[6] if len(sys.argv) > 6 else ""
+        print(json.dumps(extract(video, sub_id, ch_id, ch_title, u_id)))
