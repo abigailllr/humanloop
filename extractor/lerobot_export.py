@@ -1,8 +1,5 @@
 import gzip
 import json
-import math
-import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -57,7 +54,6 @@ def export(hmdf_paths: list[str], out_dir: str, task_description: str = "") -> N
             action_dim = _action_dim(record)
 
         fps = record.get("fps", 30.0)
-        frame_start = total_frames
 
         for i, frame in enumerate(frames):
             ms = frame.get("motor_state", {})
