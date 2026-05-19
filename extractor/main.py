@@ -6,9 +6,9 @@ from pathlib import Path
 from vision import detect, hand_contacts
 from gemini import validate as gemini_validate
 from synthetic import check_metadata, check_motion_naturalness
-from kinematics import compute_joint_angles
+from kinematics import compute_joint_angles, to_motor_state, build_observation_vector
 
-HMDF_VERSION = "1.6"
+HMDF_VERSION = "1.7"
 
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
@@ -72,6 +72,8 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
     frame_index = 0
     prev_pose = None
     prev_hands = None
+    prev_joint_angles = None
+    prev_motor = None
 
     with mp_pose.Pose() as pose, mp_hands.Hands() as hands:
         while cap.isOpened():
@@ -107,11 +109,16 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
             ] or None
 
             joint_angles = compute_joint_angles(pose_landmarks) if pose_landmarks else {}
+            motor = to_motor_state(joint_angles, prev_joint_angles if frame_index > 0 else None, dt)
+            t_sec = round(frame_index / fps, 4) if fps > 0 else 0
+            obs = build_observation_vector(motor, prev_motor, t_sec)
 
             entry = {
-                "t": round(frame_index / fps, 4) if fps > 0 else 0,
+                "t": t_sec,
                 "pose": pose_landmarks,
                 "joint_angles": joint_angles,
+                "motor_state": motor,
+                "obs": obs,
                 "hands": hand_landmarks,
                 "objects": objects,
                 "contacts": contacts,
@@ -126,6 +133,8 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
             frames.append(entry)
             prev_pose = pose_landmarks
             prev_hands = hand_landmarks
+            prev_joint_angles = joint_angles
+            prev_motor = motor
             frame_index += 1
 
     cap.release()
