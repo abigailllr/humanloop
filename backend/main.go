@@ -82,6 +82,9 @@ func main() {
 	mux.Handle("POST /v1/auth/apple", authRL(http.HandlerFunc(handlers.AuthApple)))
 
 	mux.HandleFunc("GET /v1/challenges", handlers.GetChallenges)
+	mux.Handle("POST /v1/challenges", middleware.APIKey(http.HandlerFunc(handlers.CreateChallenge)))
+	mux.Handle("PUT /v1/challenges/{id}", middleware.APIKey(http.HandlerFunc(handlers.UpdateChallenge)))
+	mux.Handle("DELETE /v1/challenges/{id}", middleware.APIKey(http.HandlerFunc(handlers.DeleteChallenge)))
 
 	mux.Handle("POST /v1/submit/{challengeId}", submitRL(middleware.Auth(http.HandlerFunc(handlers.Submit))))
 	mux.Handle("GET /v1/profile", middleware.Auth(http.HandlerFunc(handlers.GetProfile)))
@@ -91,6 +94,7 @@ func main() {
 	mux.Handle("GET /v1/submissions", middleware.Auth(http.HandlerFunc(handlers.GetUserSubmissions)))
 
 	mux.Handle("GET /v1/data/export", middleware.APIKey(http.HandlerFunc(handlers.ExportData)))
+	mux.Handle("GET /v1/data/stats", middleware.APIKey(http.HandlerFunc(handlers.ExportStats)))
 
 	stack := middleware.Security(middleware.RealIP(middleware.Logger(mux)))
 	log.Println("listening on :8080")

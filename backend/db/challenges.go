@@ -48,3 +48,23 @@ func IncrementChallengeSubmissions(ctx context.Context, challengeID string) erro
 	_, err := Pool.Exec(ctx, `UPDATE challenges SET submissions = submissions + 1 WHERE id = $1`, challengeID)
 	return err
 }
+
+func CreateChallenge(ctx context.Context, c models.Challenge) error {
+	_, err := Pool.Exec(ctx, `
+		INSERT INTO challenges (id, title, description, difficulty)
+		VALUES ($1, $2, $3, $4)
+	`, c.ID, c.Title, c.Description, c.Difficulty)
+	return err
+}
+
+func UpdateChallenge(ctx context.Context, c models.Challenge) error {
+	_, err := Pool.Exec(ctx, `
+		UPDATE challenges SET title=$2, description=$3, difficulty=$4 WHERE id=$1
+	`, c.ID, c.Title, c.Description, c.Difficulty)
+	return err
+}
+
+func DeleteChallenge(ctx context.Context, id string) error {
+	_, err := Pool.Exec(ctx, `DELETE FROM challenges WHERE id=$1`, id)
+	return err
+}
