@@ -74,12 +74,15 @@ func main() {
 
 	mux.HandleFunc("GET /health", handlers.Health)
 
-	mux.HandleFunc("POST /v1/auth/google", handlers.AuthGoogle)
-	mux.HandleFunc("POST /v1/auth/apple", handlers.AuthApple)
+	authRL := middleware.RateLimitAuth
+	submitRL := middleware.RateLimitSubmit
+
+	mux.Handle("POST /v1/auth/google", authRL(http.HandlerFunc(handlers.AuthGoogle)))
+	mux.Handle("POST /v1/auth/apple", authRL(http.HandlerFunc(handlers.AuthApple)))
 
 	mux.HandleFunc("GET /v1/challenges", handlers.GetChallenges)
 
-	mux.Handle("POST /v1/submit/{challengeId}", middleware.Auth(http.HandlerFunc(handlers.Submit)))
+	mux.Handle("POST /v1/submit/{challengeId}", submitRL(middleware.Auth(http.HandlerFunc(handlers.Submit))))
 	mux.Handle("GET /v1/profile", middleware.Auth(http.HandlerFunc(handlers.GetProfile)))
 	mux.Handle("GET /v1/submissions/{id}", middleware.Auth(http.HandlerFunc(handlers.GetSubmission)))
 
@@ -88,6 +91,7 @@ func main() {
 
 	mux.Handle("GET /v1/data/export", middleware.APIKey(http.HandlerFunc(handlers.ExportData)))
 
+	stack := middleware.Security(middleware.RealIP(middleware.Logger(mux)))
 	log.Println("listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", middleware.Logger(mux)))
+	log.Fatal(http.ListenAndServe(":8080", stack))
 }

@@ -5,8 +5,9 @@ import sys
 from pathlib import Path
 from vision import detect, hand_contacts
 from gemini import validate as gemini_validate
+from synthetic import check_metadata, check_motion_naturalness
 
-HMDF_VERSION = "1.4"
+HMDF_VERSION = "1.5"
 
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
@@ -129,6 +130,29 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
     contact_events = _contact_events(frames, fps) if fps > 0 else []
     stats = _stats(frames)
 
+    meta_check = check_metadata(video_path)
+    motion_check = check_motion_naturalness(frames)
+
+    gemini_synthetic = validation.get("synthetic", False)
+    gemini_synthetic_confidence = validation.get("synthetic_confidence", 0.0)
+    gemini_synthetic_signals = validation.get("synthetic_signals", [])
+
+    all_signals = list(gemini_synthetic_signals) + meta_check.get("signals", []) + motion_check.get("signals", [])
+    is_synthetic = (
+        gemini_synthetic
+        or gemini_synthetic_confidence > 0.7
+        or meta_check.get("suspicious") and len(meta_check.get("signals", [])) >= 2
+        or motion_check.get("suspicious") and len(motion_check.get("signals", [])) >= 2
+    )
+
+    synthetic_detection = {
+        "synthetic": is_synthetic,
+        "signals": all_signals,
+        "gemini_confidence": gemini_synthetic_confidence,
+        "metadata": meta_check,
+        "motion": motion_check,
+    }
+
     record = {
         "hmdf_version": HMDF_VERSION,
         "source": "humanloop",
@@ -142,6 +166,7 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
         "contact_events": contact_events,
         "stats": stats,
         "validation": validation,
+        "synthetic_detection": synthetic_detection,
         "metadata": {
             "task_type": "manipulation",
             "coordinate_space": "normalized",

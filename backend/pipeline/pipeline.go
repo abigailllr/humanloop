@@ -122,6 +122,21 @@ func (p *Pipeline) worker() {
 			continue
 		}
 
+		if isSynthetic(record) {
+			p.results.Store(job.SubmissionID, JobResult{
+				SubmissionID: job.SubmissionID,
+				Status:       StatusFailed,
+				Error:        "synthetic video detected",
+			})
+			if db.Pool != nil {
+				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "synthetic", "", 0)
+			}
+			if isLocalPath(job.VideoPath) {
+				os.Remove(job.VideoPath)
+			}
+			continue
+		}
+
 		hmdfPath, err := p.save(job.SubmissionID, record)
 		if err != nil {
 			p.results.Store(job.SubmissionID, JobResult{
@@ -168,4 +183,13 @@ func (p *Pipeline) save(submissionID string, data map[string]any) (string, error
 
 func isLocalPath(path string) bool {
 	return !strings.HasPrefix(path, "s3://")
+}
+
+func isSynthetic(record map[string]any) bool {
+	sd, ok := record["synthetic_detection"].(map[string]any)
+	if !ok {
+		return false
+	}
+	synthetic, _ := sd["synthetic"].(bool)
+	return synthetic
 }

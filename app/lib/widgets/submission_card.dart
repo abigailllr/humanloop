@@ -9,25 +9,28 @@ class SubmissionCard extends StatelessWidget {
 
   Color get _statusColor {
     switch (submission.status) {
-      case SubmissionStatus.verified: return AppColors.success;
-      case SubmissionStatus.rejected: return AppColors.danger;
-      case SubmissionStatus.pending:  return AppColors.warning;
+      case SubmissionStatus.verified:  return AppColors.success;
+      case SubmissionStatus.rejected:  return AppColors.danger;
+      case SubmissionStatus.synthetic: return AppColors.danger;
+      case SubmissionStatus.pending:   return AppColors.warning;
     }
   }
 
   Color get _statusBg {
     switch (submission.status) {
-      case SubmissionStatus.verified: return AppColors.successLight;
-      case SubmissionStatus.rejected: return AppColors.dangerLight;
-      case SubmissionStatus.pending:  return AppColors.warningLight;
+      case SubmissionStatus.verified:  return AppColors.successLight;
+      case SubmissionStatus.rejected:  return AppColors.dangerLight;
+      case SubmissionStatus.synthetic: return AppColors.dangerLight;
+      case SubmissionStatus.pending:   return AppColors.warningLight;
     }
   }
 
   String get _statusLabel {
     switch (submission.status) {
-      case SubmissionStatus.verified: return 'Verified';
-      case SubmissionStatus.rejected: return 'Rejected';
-      case SubmissionStatus.pending:  return 'Pending';
+      case SubmissionStatus.verified:  return 'Verified';
+      case SubmissionStatus.rejected:  return 'Rejected';
+      case SubmissionStatus.synthetic: return 'AI Detected';
+      case SubmissionStatus.pending:   return 'Pending';
     }
   }
 

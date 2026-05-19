@@ -21,16 +21,45 @@ import (
 var Store storage.Store = storage.NewLocalStore()
 var Queue *queue.Client
 
+const maxVideoSize = 500 * 1024 * 1024
+
 func Submit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxVideoSize+4*1024)
+
 	challengeID := r.PathValue("challengeId")
 	userID := r.Context().Value(middleware.UserIDKey).(string)
 
-	file, _, err := r.FormFile("video")
+	if err := r.ParseMultipartForm(32 * 1024 * 1024); err != nil {
+		http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	file, header, err := r.FormFile("video")
 	if err != nil {
 		http.Error(w, "no video", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
+
+	if header.Size > maxVideoSize {
+		http.Error(w, "video too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	sniff := make([]byte, 512)
+	if _, err := file.Read(sniff); err != nil {
+		http.Error(w, "unreadable file", http.StatusBadRequest)
+		return
+	}
+	mime := http.DetectContentType(sniff)
+	if mime != "video/mp4" && mime != "video/quicktime" && mime != "video/x-msvideo" && mime != "video/webm" && mime != "video/x-matroska" {
+		http.Error(w, "invalid file type", http.StatusUnsupportedMediaType)
+		return
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		http.Error(w, "unreadable file", http.StatusBadRequest)
+		return
+	}
 
 	path, err := Store.Save(challengeID, userID, file)
 	if err != nil {

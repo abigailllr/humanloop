@@ -49,9 +49,20 @@ def validate(video_path: str, challenge_title: str) -> dict:
 
     parts = [
         f'Challenge: "{challenge_title}". Analyze these sampled frames from a submission video. '
-        "Return JSON with keys: valid (bool), confidence (float 0-1), scene (string describing what is happening), "
+        "Return JSON with these keys: "
+        "valid (bool, true if a real human is completing the challenge), "
+        "confidence (float 0-1), "
+        "scene (string describing what is happening), "
         "reason (string explaining the validity decision), "
-        "phases (array of {label (one of: approach, grasp, manipulate, transport, place, release), start_pct (float 0-1), end_pct (float 0-1)}).",
+        "phases (array of {label (one of: approach, grasp, manipulate, transport, place, release), start_pct (float 0-1), end_pct (float 0-1)}), "
+        "synthetic (bool, true if the video appears AI-generated or synthetic rather than real camera footage), "
+        "synthetic_confidence (float 0-1, how confident you are that this is synthetic), "
+        "synthetic_signals (array of strings, each describing a specific indicator of AI generation — "
+        "look for: perfect lighting with no natural variation, no motion blur on fast movement, "
+        "no film grain or sensor noise, skin texture that looks rendered not photographed, "
+        "hands with incorrect anatomy or too many/few fingers, background that looks painted or too clean, "
+        "unnaturally stable camera with zero shake during handheld motion, "
+        "objects that float or have incorrect shadows, temporal inconsistency between frames).",
         *[_encode(f) for f in frames],
     ]
 
