@@ -2,61 +2,71 @@ import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../theme/text_styles.dart';
 import '../models/user.dart';
+import '../services/api_service.dart';
 import '../widgets/leaderboard_tile.dart';
 
-final _demoLeaders = [
-  AppUser(id: 'u1', name: 'Maria Santos',   email: '', credits: 312, submissions: 87, rank: 1),
-  AppUser(id: 'u2', name: 'James Kim',      email: '', credits: 278, submissions: 74, rank: 2),
-  AppUser(id: 'u3', name: 'Priya Nair',     email: '', credits: 241, submissions: 69, rank: 3),
-  AppUser(id: 'u4', name: 'Luca Ferrari',   email: '', credits: 198, submissions: 55, rank: 4),
-  AppUser(id: 'u5', name: 'Aiko Tanaka',    email: '', credits: 175, submissions: 49, rank: 5),
-  AppUser(id: 'u6', name: 'Omar Hassan',    email: '', credits: 154, submissions: 44, rank: 6),
-  AppUser(id: 'u7', name: 'Sophie Dubois',  email: '', credits: 132, submissions: 38, rank: 7),
-  AppUser(id: 'u8', name: 'Raj Patel',      email: '', credits: 110, submissions: 32, rank: 8),
-  AppUser(id: 'u9', name: 'Elena Kovacs',   email: '', credits: 89,  submissions: 25, rank: 9),
-  AppUser(id: 'u10', name: 'Alex Johnson',  email: '', credits: 4,   submissions: 3,  rank: 42),
-];
-
-class LeaderboardScreen extends StatelessWidget {
+class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final top3 = _demoLeaders.take(3).toList();
-    final rest = _demoLeaders.skip(3).toList();
+  State<LeaderboardScreen> createState() => _LeaderboardScreenState();
+}
 
+class _LeaderboardScreenState extends State<LeaderboardScreen> {
+  late Future<List<AppUser>> _leaders;
+
+  @override
+  void initState() {
+    super.initState();
+    _leaders = ApiService.getLeaderboard();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-            sliver: SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Leaderboard', style: AppTextStyles.screenTitle),
-                  const SizedBox(height: 4),
-                  Text('Top contributors this month', style: AppTextStyles.bodySmall),
-                  const SizedBox(height: 28),
-                  _Podium(top3: top3),
-                  const SizedBox(height: 28),
-                  Text('Rankings', style: AppTextStyles.sectionTitle),
-                  const SizedBox(height: 4),
-                ],
+      child: FutureBuilder<List<AppUser>>(
+        future: _leaders,
+        builder: (ctx, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final all = snap.data ?? [];
+          final top3 = all.take(3).toList();
+          final rest = all.skip(3).toList();
+
+          return CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Leaderboard', style: AppTextStyles.screenTitle),
+                      const SizedBox(height: 4),
+                      Text('Top contributors this month', style: AppTextStyles.bodySmall),
+                      const SizedBox(height: 28),
+                      if (top3.length == 3) _Podium(top3: top3),
+                      const SizedBox(height: 28),
+                      Text('Rankings', style: AppTextStyles.sectionTitle),
+                      const SizedBox(height: 4),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (_, i) => LeaderboardTile(user: rest[i]),
-                childCount: rest.length,
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (_, i) => LeaderboardTile(user: rest[i]),
+                    childCount: rest.length,
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
-        ],
+              const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+            ],
+          );
+        },
       ),
     );
   }
@@ -68,7 +78,6 @@ class _Podium extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Order: 2nd, 1st, 3rd
     final order = [top3[1], top3[0], top3[2]];
     final heights = [80.0, 110.0, 60.0];
     final ranks = [2, 1, 3];

@@ -25,7 +25,27 @@ func GetUser(ctx context.Context, id string) (models.User, error) {
 
 func AddCredits(ctx context.Context, userID string, amount int) error {
 	_, err := Pool.Exec(ctx, `
-		UPDATE users SET credits = credits + $1 WHERE id = $2
+		UPDATE users SET credits = credits + $1, submissions = submissions + 1 WHERE id = $2
 	`, amount, userID)
 	return err
+}
+
+func GetLeaderboard(ctx context.Context) ([]models.User, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT id, name, credits, submissions FROM users ORDER BY credits DESC LIMIT 100
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Name, &u.Credits, &u.Submissions); err != nil {
+			continue
+		}
+		list = append(list, u)
+	}
+	return list, nil
 }

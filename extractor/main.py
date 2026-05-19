@@ -6,17 +6,70 @@ from pathlib import Path
 from vision import detect, hand_contacts
 from gemini import validate as gemini_validate
 
-HMDF_VERSION = "1.2"
+HMDF_VERSION = "1.4"
 
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
 
 
-def extract(video_path: str, submission_id: str = "", challenge_id: str = "", challenge_title: str = "", user_id: str = "") -> dict:
+def _velocity(prev, curr, dt):
+    if not prev or not curr or dt == 0:
+        return None
+    return [
+        {
+            "vx": round((c["x"] - p["x"]) / dt, 6),
+            "vy": round((c["y"] - p["y"]) / dt, 6),
+            "vz": round((c["z"] - p["z"]) / dt, 6),
+        }
+        for p, c in zip(prev, curr)
+    ]
+
+
+def _contact_events(frames, fps):
+    active = {}
+    events = []
+    n = len(frames)
+    for i, frame in enumerate(frames):
+        current = {(c["hand"], c["object_label"]) for c in frame.get("contacts", [])}
+        for key in current - active.keys():
+            active[key] = i
+        for key in list(active.keys()):
+            if key not in current:
+                start = active.pop(key)
+                events.append({"hand": key[0], "object_label": key[1], "t_start": round(start / fps, 4), "t_end": round(i / fps, 4)})
+    for key, start in active.items():
+        events.append({"hand": key[0], "object_label": key[1], "t_start": round(start / fps, 4), "t_end": round((n - 1) / fps, 4)})
+    return events
+
+
+def _stats(frames):
+    touched = set()
+    hand_frames = [0, 0]
+    bimanual = False
+    for frame in frames:
+        hands = frame.get("hands") or []
+        if len(hands) >= 2:
+            bimanual = True
+        for c in frame.get("contacts", []):
+            touched.add(c["object_label"])
+            if c["hand"] < 2:
+                hand_frames[c["hand"]] += 1
+    dominant = None
+    if hand_frames[0] > hand_frames[1]:
+        dominant = "right"
+    elif hand_frames[1] > hand_frames[0]:
+        dominant = "left"
+    return {"bimanual": bimanual, "objects_touched": list(touched), "dominant_hand": dominant}
+
+
+def extract(video_path: str, submission_id: str = "", challenge_id: str = "", challenge_title: str = "", user_id: str = "", lat: float = 0.0, lng: float = 0.0, captured_at: str = "") -> dict:
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
+    dt = 1.0 / fps if fps > 0 else 0
     frames = []
     frame_index = 0
+    prev_pose = None
+    prev_hands = None
 
     with mp_pose.Pose() as pose, mp_hands.Hands() as hands:
         while cap.isOpened():
@@ -35,29 +88,48 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
                 ]
 
             hand_landmarks = []
+            hand_labels = []
             if hands_result.multi_hand_landmarks:
-                for hand in hands_result.multi_hand_landmarks:
-                    hand_landmarks.append(
-                        [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in hand.landmark]
-                    )
+                for i, hand in enumerate(hands_result.multi_hand_landmarks):
+                    hand_landmarks.append([{"x": lm.x, "y": lm.y, "z": lm.z} for lm in hand.landmark])
+                    if hands_result.multi_handedness:
+                        hand_labels.append(hands_result.multi_handedness[i].classification[0].label)
 
             objects = detect(rgb)
             contacts = hand_contacts(hand_landmarks, objects)
 
-            frames.append({
+            pose_vel = _velocity(prev_pose, pose_landmarks, dt) if pose_landmarks else None
+            hand_vel = [
+                _velocity(prev_hands[i] if prev_hands and i < len(prev_hands) else None, hand_landmarks[i], dt)
+                for i in range(len(hand_landmarks))
+            ] or None
+
+            entry = {
                 "t": round(frame_index / fps, 4) if fps > 0 else 0,
                 "pose": pose_landmarks,
                 "hands": hand_landmarks,
                 "objects": objects,
                 "contacts": contacts,
-            })
+            }
+            if pose_vel:
+                entry["pose_vel"] = pose_vel
+            if hand_vel:
+                entry["hand_vel"] = hand_vel
+            if hand_labels:
+                entry["hand_labels"] = hand_labels
+
+            frames.append(entry)
+            prev_pose = pose_landmarks
+            prev_hands = hand_landmarks
             frame_index += 1
 
     cap.release()
 
     validation = gemini_validate(video_path, challenge_title)
+    contact_events = _contact_events(frames, fps) if fps > 0 else []
+    stats = _stats(frames)
 
-    return {
+    record = {
         "hmdf_version": HMDF_VERSION,
         "source": "humanloop",
         "submission_id": submission_id,
@@ -67,6 +139,8 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
         "fps": fps,
         "frame_count": len(frames),
         "frames": frames,
+        "contact_events": contact_events,
+        "stats": stats,
         "validation": validation,
         "metadata": {
             "task_type": "manipulation",
@@ -76,6 +150,13 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
             "vision_model": "yolo11x",
         },
     }
+
+    if lat != 0.0 or lng != 0.0:
+        record["location"] = {"lat": lat, "lng": lng}
+    if captured_at:
+        record["captured_at"] = captured_at
+
+    return record
 
 
 def validate(video_path: str) -> dict:
@@ -101,7 +182,7 @@ def validate(video_path: str) -> dict:
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("usage: main.py <validate|extract> <video_path> [submission_id] [challenge_id] [challenge_title] [user_id]")
+        print("usage: main.py <validate|extract> <video_path> [submission_id] [challenge_id] [challenge_title] [user_id] [lat] [lng] [captured_at]")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -114,4 +195,7 @@ if __name__ == "__main__":
         ch_id = sys.argv[4] if len(sys.argv) > 4 else ""
         ch_title = sys.argv[5] if len(sys.argv) > 5 else ""
         u_id = sys.argv[6] if len(sys.argv) > 6 else ""
-        print(json.dumps(extract(video, sub_id, ch_id, ch_title, u_id)))
+        lat = float(sys.argv[7]) if len(sys.argv) > 7 else 0.0
+        lng = float(sys.argv[8]) if len(sys.argv) > 8 else 0.0
+        captured_at = sys.argv[9] if len(sys.argv) > 9 else ""
+        print(json.dumps(extract(video, sub_id, ch_id, ch_title, u_id, lat, lng, captured_at)))

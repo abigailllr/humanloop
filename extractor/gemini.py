@@ -49,7 +49,9 @@ def validate(video_path: str, challenge_title: str) -> dict:
 
     parts = [
         f'Challenge: "{challenge_title}". Analyze these sampled frames from a submission video. '
-        "Return JSON with keys: valid (bool), confidence (float 0-1), scene (string describing what is happening), reason (string explaining the validity decision).",
+        "Return JSON with keys: valid (bool), confidence (float 0-1), scene (string describing what is happening), "
+        "reason (string explaining the validity decision), "
+        "phases (array of {label (one of: approach, grasp, manipulate, transport, place, release), start_pct (float 0-1), end_pct (float 0-1)}).",
         *[_encode(f) for f in frames],
     ]
 

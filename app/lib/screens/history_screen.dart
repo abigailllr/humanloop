@@ -1,93 +1,88 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
+import '../models/submission.dart';
 import '../theme/colors.dart';
 import '../theme/text_styles.dart';
-import '../models/submission.dart';
 import '../widgets/submission_card.dart';
 
-final _demoSubmissions = [
-  Submission(
-    id: 's1',
-    challengeId: 'c4',
-    challengeTitle: 'Pour & Fill',
-    submittedAt: DateTime.now().subtract(const Duration(hours: 2)),
-    status: SubmissionStatus.verified,
-    creditsEarned: 2,
-  ),
-  Submission(
-    id: 's2',
-    challengeId: 'c1',
-    challengeTitle: 'Pick & Place',
-    submittedAt: DateTime.now().subtract(const Duration(days: 1)),
-    status: SubmissionStatus.verified,
-    creditsEarned: 1,
-  ),
-  Submission(
-    id: 's3',
-    challengeId: 'c2',
-    challengeTitle: 'Fold It',
-    submittedAt: DateTime.now().subtract(const Duration(days: 3)),
-    status: SubmissionStatus.pending,
-    creditsEarned: 0,
-  ),
-];
-
-class HistoryScreen extends StatelessWidget {
+class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
 
-  int get _totalCredits =>
-      _demoSubmissions.fold(0, (sum, s) => sum + s.creditsEarned);
+  @override
+  ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends ConsumerState<HistoryScreen> {
+  late Future<List<Submission>> _submissions;
+
+  @override
+  void initState() {
+    super.initState();
+    final token = ref.read(authProvider).token ?? '';
+    _submissions = ApiService.getUserSubmissions(token: token);
+  }
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-            sliver: SliverToBoxAdapter(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('History', style: AppTextStyles.screenTitle),
-                  const SizedBox(height: 4),
-                  Text('Your past submissions', style: AppTextStyles.bodySmall),
-                  const SizedBox(height: 20),
-                  _SummaryBanner(
-                    submissions: _demoSubmissions.length,
-                    verified: _demoSubmissions.where((s) => s.status == SubmissionStatus.verified).length,
-                    credits: _totalCredits,
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Submissions', style: AppTextStyles.sectionTitle),
-                  const SizedBox(height: 4),
-                ],
-              ),
-            ),
-          ),
-          _demoSubmissions.isEmpty
-              ? SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.videocam_off_outlined, size: 48, color: AppColors.textTertiary),
-                        const SizedBox(height: 12),
-                        Text('No submissions yet', style: AppTextStyles.bodyMedium),
-                      ],
-                    ),
-                  ),
-                )
-              : SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (_, i) => SubmissionCard(submission: _demoSubmissions[i]),
-                      childCount: _demoSubmissions.length,
-                    ),
+      child: FutureBuilder<List<Submission>>(
+        future: _submissions,
+        builder: (ctx, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final list = snap.data ?? [];
+          final verified = list.where((s) => s.status == SubmissionStatus.verified).length;
+          final credits = list.fold(0, (sum, s) => sum + s.creditsEarned);
+
+          return CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('History', style: AppTextStyles.screenTitle),
+                      const SizedBox(height: 4),
+                      Text('Your past submissions', style: AppTextStyles.bodySmall),
+                      const SizedBox(height: 20),
+                      _SummaryBanner(submissions: list.length, verified: verified, credits: credits),
+                      const SizedBox(height: 24),
+                      Text('Submissions', style: AppTextStyles.sectionTitle),
+                      const SizedBox(height: 4),
+                    ],
                   ),
                 ),
-          const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
-        ],
+              ),
+              list.isEmpty
+                  ? SliverFillRemaining(
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.videocam_off_outlined, size: 48, color: AppColors.textTertiary),
+                            const SizedBox(height: 12),
+                            Text('No submissions yet', style: AppTextStyles.bodyMedium),
+                          ],
+                        ),
+                      ),
+                    )
+                  : SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (_, i) => SubmissionCard(submission: list[i]),
+                          childCount: list.length,
+                        ),
+                      ),
+                    ),
+              const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
+            ],
+          );
+        },
       ),
     );
   }

@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/abigailtech/humanloop/backend/db"
+	"github.com/abigailtech/humanloop/backend/models"
 )
 
 func AuthGoogle(w http.ResponseWriter, r *http.Request) {
@@ -26,10 +29,15 @@ func AuthGoogle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := issueJWT("google:"+info.Sub, info.Email, info.Name)
+	userID := "google:" + info.Sub
+	token, err := issueJWT(userID, info.Email, info.Name)
 	if err != nil {
 		http.Error(w, "could not issue token", http.StatusInternalServerError)
 		return
+	}
+
+	if db.Pool != nil {
+		db.UpsertUser(r.Context(), models.User{ID: userID, Email: info.Email, Name: info.Name})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -57,10 +65,15 @@ func AuthApple(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := issueJWT("apple:"+body.UserID, body.Email, body.Name)
+	userID := "apple:" + body.UserID
+	token, err := issueJWT(userID, body.Email, body.Name)
 	if err != nil {
 		http.Error(w, "could not issue token", http.StatusInternalServerError)
 		return
+	}
+
+	if db.Pool != nil {
+		db.UpsertUser(r.Context(), models.User{ID: userID, Email: body.Email, Name: body.Name})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

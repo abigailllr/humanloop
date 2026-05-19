@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import '../models/challenge.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
@@ -70,10 +71,24 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     if (_videoPath == null) return;
     setState(() => _uploading = true);
     final token = ref.read(authProvider).token ?? '';
+
+    double? lat, lng;
+    try {
+      final permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
+        final pos = await Geolocator.getCurrentPosition();
+        lat = pos.latitude;
+        lng = pos.longitude;
+      }
+    } catch (_) {}
+
     final result = await ApiService.uploadVideo(
       challengeId: widget.challenge!.id,
       videoPath: _videoPath!,
       token: token,
+      lat: lat,
+      lng: lng,
+      capturedAt: DateTime.now().toUtc().toIso8601String(),
     );
     if (mounted) {
       setState(() {

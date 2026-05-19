@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/abigailtech/humanloop/backend/db"
 	"github.com/abigailtech/humanloop/backend/middleware"
 	"github.com/abigailtech/humanloop/backend/models"
 	"github.com/abigailtech/humanloop/backend/pipeline"
@@ -35,6 +38,13 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lat, _ := strconv.ParseFloat(r.FormValue("lat"), 64)
+	lng, _ := strconv.ParseFloat(r.FormValue("lng"), 64)
+	capturedAt := r.FormValue("captured_at")
+	if capturedAt == "" {
+		capturedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
 	title := challengeTitle(challengeID)
 
 	submission := models.Submission{
@@ -42,6 +52,9 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 		ChallengeID: challengeID,
 		UserID:      userID,
 		VideoPath:   path,
+		Latitude:    lat,
+		Longitude:   lng,
+		CapturedAt:  capturedAt,
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -51,6 +64,13 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 		ChallengeTitle: title,
 		UserID:         submission.UserID,
 		VideoPath:      submission.VideoPath,
+		Latitude:       lat,
+		Longitude:      lng,
+		CapturedAt:     capturedAt,
+	}
+
+	if db.Pool != nil {
+		db.CreateSubmission(r.Context(), submission)
 	}
 
 	if Queue != nil {
@@ -72,7 +92,17 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 }
 
 func challengeTitle(id string) string {
-	for _, c := range seedChallenges {
+	if db.Pool != nil {
+		challenges, err := db.GetChallenges(context.Background())
+		if err == nil {
+			for _, c := range challenges {
+				if c.ID == id {
+					return c.Title
+				}
+			}
+		}
+	}
+	for _, c := range fallbackChallenges {
 		if c.ID == id {
 			return c.Title
 		}
