@@ -40,6 +40,12 @@ type Landmark struct {
 	V float64 `json:"v,omitempty"`
 }
 
+type LandmarkVelocity struct {
+	VX float64 `json:"vx"`
+	VY float64 `json:"vy"`
+	VZ float64 `json:"vz"`
+}
+
 type DetectedObject struct {
 	Label      string    `json:"label"`
 	Confidence float64   `json:"confidence"`
@@ -52,12 +58,28 @@ type Contact struct {
 	Confidence  float64 `json:"confidence"`
 }
 
+type ContactEvent struct {
+	Hand        int     `json:"hand"`
+	ObjectLabel string  `json:"object_label"`
+	TStart      float64 `json:"t_start"`
+	TEnd        float64 `json:"t_end"`
+}
+
 type HMDFFrame struct {
-	T        float64          `json:"t"`
-	Pose     []Landmark       `json:"pose"`
-	Hands    [][]Landmark     `json:"hands"`
-	Objects  []DetectedObject `json:"objects"`
-	Contacts []Contact        `json:"contacts"`
+	T          float64            `json:"t"`
+	Pose       []Landmark         `json:"pose"`
+	PoseVel    []LandmarkVelocity `json:"pose_vel,omitempty"`
+	Hands      [][]Landmark       `json:"hands"`
+	HandVel    [][]LandmarkVelocity `json:"hand_vel,omitempty"`
+	HandLabels []string           `json:"hand_labels,omitempty"`
+	Objects    []DetectedObject   `json:"objects"`
+	Contacts   []Contact          `json:"contacts"`
+}
+
+type HMDFStats struct {
+	Bimanual       bool     `json:"bimanual"`
+	ObjectsTouched []string `json:"objects_touched"`
+	DominantHand   string   `json:"dominant_hand,omitempty"`
 }
 
 type HMDFMetadata struct {
@@ -68,12 +90,19 @@ type HMDFMetadata struct {
 	VisionModel     string `json:"vision_model"`
 }
 
+type ActionPhase struct {
+	Label    string  `json:"label"`
+	StartPct float64 `json:"start_pct"`
+	EndPct   float64 `json:"end_pct"`
+}
+
 type HMDFValidation struct {
-	Valid      bool    `json:"valid"`
-	Confidence float64 `json:"confidence"`
-	Scene      string  `json:"scene"`
-	Reason     string  `json:"reason"`
-	Skipped    bool    `json:"skipped,omitempty"`
+	Valid      bool          `json:"valid"`
+	Confidence float64       `json:"confidence"`
+	Scene      string        `json:"scene"`
+	Reason     string        `json:"reason"`
+	Phases     []ActionPhase `json:"phases,omitempty"`
+	Skipped    bool          `json:"skipped,omitempty"`
 }
 
 type Location struct {
@@ -93,6 +122,8 @@ type HMDFRecord struct {
 	FPS            float64         `json:"fps"`
 	FrameCount     int             `json:"frame_count"`
 	Frames         []HMDFFrame     `json:"frames"`
+	ContactEvents  []ContactEvent  `json:"contact_events,omitempty"`
+	Stats          *HMDFStats      `json:"stats,omitempty"`
 	Validation     *HMDFValidation `json:"validation,omitempty"`
 	Metadata       HMDFMetadata    `json:"metadata"`
 }
