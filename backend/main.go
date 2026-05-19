@@ -1,23 +1,58 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 
+	"github.com/abigailtech/humanloop/backend/db"
 	"github.com/abigailtech/humanloop/backend/handlers"
 	"github.com/abigailtech/humanloop/backend/middleware"
 	"github.com/abigailtech/humanloop/backend/pipeline"
+	"github.com/abigailtech/humanloop/backend/queue"
 	"github.com/abigailtech/humanloop/backend/storage"
 )
 
 func main() {
+	ctx := context.Background()
+
 	extractedDir := os.Getenv("EXTRACTED_DIR")
 	if extractedDir == "" {
 		extractedDir = "./data/extracted"
 	}
 
 	handlers.Pipeline = pipeline.New(4, extractedDir)
+
+	if err := db.Connect(ctx); err != nil {
+		log.Println("db unavailable:", err)
+	} else {
+		defer db.Close()
+		if err := db.Migrate(ctx); err != nil {
+			log.Println("db migrate:", err)
+		}
+	}
+
+	q := queue.New()
+	if err := q.Ping(ctx); err != nil {
+		log.Println("redis unavailable:", err)
+	} else {
+		handlers.Queue = q
+		go func() {
+			for {
+				data, err := q.Pop(ctx)
+				if err != nil {
+					continue
+				}
+				var job pipeline.Job
+				if err := json.Unmarshal(data, &job); err != nil {
+					continue
+				}
+				handlers.Pipeline.Enqueue(job)
+			}
+		}()
+	}
 
 	if os.Getenv("AWS_BUCKET") != "" {
 		s3, err := storage.NewS3Store()
@@ -29,18 +64,19 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /auth/google", handlers.AuthGoogle)
-	mux.HandleFunc("POST /auth/apple", handlers.AuthApple)
+	mux.HandleFunc("GET /health", handlers.Health)
 
-	mux.HandleFunc("GET /challenges", handlers.GetChallenges)
+	mux.HandleFunc("POST /v1/auth/google", handlers.AuthGoogle)
+	mux.HandleFunc("POST /v1/auth/apple", handlers.AuthApple)
 
-	mux.Handle("POST /submit/{challengeId}", middleware.Auth(http.HandlerFunc(handlers.Submit)))
-	mux.Handle("GET /profile", middleware.Auth(http.HandlerFunc(handlers.GetProfile)))
-	mux.Handle("GET /submissions/{id}", middleware.Auth(http.HandlerFunc(handlers.GetSubmission)))
+	mux.HandleFunc("GET /v1/challenges", handlers.GetChallenges)
 
-	mux.Handle("GET /data/export", middleware.APIKey(http.HandlerFunc(handlers.ExportData)))
+	mux.Handle("POST /v1/submit/{challengeId}", middleware.Auth(http.HandlerFunc(handlers.Submit)))
+	mux.Handle("GET /v1/profile", middleware.Auth(http.HandlerFunc(handlers.GetProfile)))
+	mux.Handle("GET /v1/submissions/{id}", middleware.Auth(http.HandlerFunc(handlers.GetSubmission)))
+
+	mux.Handle("GET /v1/data/export", middleware.APIKey(http.HandlerFunc(handlers.ExportData)))
 
 	log.Println("listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	log.Fatal(http.ListenAndServe(":8080", middleware.Logger(mux)))
 }
-

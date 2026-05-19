@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -10,10 +11,12 @@ import (
 	"github.com/abigailtech/humanloop/backend/middleware"
 	"github.com/abigailtech/humanloop/backend/models"
 	"github.com/abigailtech/humanloop/backend/pipeline"
+	"github.com/abigailtech/humanloop/backend/queue"
 	"github.com/abigailtech/humanloop/backend/storage"
 )
 
 var Store storage.Store = storage.NewLocalStore()
+var Queue *queue.Client
 
 func Submit(w http.ResponseWriter, r *http.Request) {
 	challengeID := r.PathValue("challengeId")
@@ -42,13 +45,22 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
 
-	Pipeline.Enqueue(pipeline.Job{
+	job := pipeline.Job{
 		SubmissionID:   submission.ID,
 		ChallengeID:    submission.ChallengeID,
 		ChallengeTitle: title,
 		UserID:         submission.UserID,
 		VideoPath:      submission.VideoPath,
-	})
+	}
+
+	if Queue != nil {
+		if err := Queue.Push(r.Context(), job); err != nil {
+			log.Println("queue push failed:", err)
+			Pipeline.Enqueue(job)
+		}
+	} else {
+		Pipeline.Enqueue(job)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
