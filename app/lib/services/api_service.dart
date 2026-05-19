@@ -6,7 +6,7 @@ class ApiService {
   static const _base = String.fromEnvironment('API_URL', defaultValue: 'http://localhost:8080');
 
   static Future<List<Challenge>> getChallenges() async {
-    final res = await http.get(Uri.parse('$_base/challenges'));
+    final res = await http.get(Uri.parse('$_base/v1/challenges'));
     if (res.statusCode != 200) return [];
     final List data = jsonDecode(res.body);
     return data.map((j) => Challenge.fromJson(j)).toList();
@@ -17,7 +17,7 @@ class ApiService {
     required String videoPath,
     required String token,
   }) async {
-    final req = http.MultipartRequest('POST', Uri.parse('$_base/submit/$challengeId'))
+    final req = http.MultipartRequest('POST', Uri.parse('$_base/v1/submit/$challengeId'))
       ..headers['Authorization'] = 'Bearer $token'
       ..files.add(await http.MultipartFile.fromPath('video', videoPath));
 
@@ -29,7 +29,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getProfile({required String token}) async {
     final res = await http.get(
-      Uri.parse('$_base/profile'),
+      Uri.parse('$_base/v1/profile'),
       headers: {'Authorization': 'Bearer $token'},
     );
     if (res.statusCode != 200) return {};

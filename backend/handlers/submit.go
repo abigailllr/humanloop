@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abigailtech/humanloop/backend/db"
 	"github.com/abigailtech/humanloop/backend/middleware"
 	"github.com/abigailtech/humanloop/backend/models"
 	"github.com/abigailtech/humanloop/backend/pipeline"
@@ -51,6 +52,10 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 		ChallengeTitle: title,
 		UserID:         submission.UserID,
 		VideoPath:      submission.VideoPath,
+	}
+
+	if db.Pool != nil {
+		db.CreateSubmission(r.Context(), submission)
 	}
 
 	if Queue != nil {

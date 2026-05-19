@@ -34,7 +34,7 @@ func GetSubmissionsByUser(ctx context.Context, userID string) ([]models.Submissi
 	var list []models.Submission
 	for rows.Next() {
 		var s models.Submission
-		if err := rows.Scan(&s.ID, &s.ChallengeID, &s.UserID, &s.VideoPath, &s.Valid, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.ChallengeID, &s.UserID, &s.VideoPath, &s.Status, &s.CreatedAt); err != nil {
 			continue
 		}
 		list = append(list, s)

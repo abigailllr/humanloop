@@ -22,6 +22,7 @@ type Submission struct {
 	ChallengeID string  `json:"challenge_id"`
 	UserID      string  `json:"user_id"`
 	VideoPath   string  `json:"video_path"`
+	Status      string  `json:"status"`
 	Valid       bool    `json:"valid"`
 	Duration    float64 `json:"duration"`
 	CreatedAt   string  `json:"created_at"`

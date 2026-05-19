@@ -2,12 +2,15 @@ package pipeline
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/abigailtech/humanloop/backend/db"
 )
 
 type Status string
@@ -82,6 +85,9 @@ func (p *Pipeline) worker() {
 				Status:       StatusFailed,
 				Error:        err.Error(),
 			})
+			if db.Pool != nil {
+				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "")
+			}
 			continue
 		}
 
@@ -92,15 +98,22 @@ func (p *Pipeline) worker() {
 				Status:       StatusFailed,
 				Error:        "invalid extractor output",
 			})
+			if db.Pool != nil {
+				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "")
+			}
 			continue
 		}
 
-		if err := p.save(job.SubmissionID, record); err != nil {
+		hmdfPath, err := p.save(job.SubmissionID, record)
+		if err != nil {
 			p.results.Store(job.SubmissionID, JobResult{
 				SubmissionID: job.SubmissionID,
 				Status:       StatusFailed,
 				Error:        err.Error(),
 			})
+			if db.Pool != nil {
+				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "")
+			}
 			continue
 		}
 
@@ -109,25 +122,28 @@ func (p *Pipeline) worker() {
 		}
 
 		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusDone})
+		if db.Pool != nil {
+			db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "done", hmdfPath)
+		}
 	}
 }
 
-func (p *Pipeline) save(submissionID string, data map[string]any) error {
+func (p *Pipeline) save(submissionID string, data map[string]any) (string, error) {
 	if err := os.MkdirAll(p.outDir, 0755); err != nil {
-		return err
+		return "", err
 	}
 
 	dst := filepath.Join(p.outDir, submissionID+".hmdf.json.gz")
 	f, err := os.Create(dst)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer f.Close()
 
 	gz := gzip.NewWriter(f)
 	defer gz.Close()
 
-	return json.NewEncoder(gz).Encode(data)
+	return dst, json.NewEncoder(gz).Encode(data)
 }
 
 func isLocalPath(path string) bool {
