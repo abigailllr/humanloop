@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../main.dart';
 import '../theme/colors.dart';
 import '../theme/text_styles.dart';
 import 'login_screen.dart';
@@ -36,6 +37,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (_page < _pages.length - 1) {
       _controller.nextPage(duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
     } else {
+      prefs.setBool('onboarded', true);
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
   }
@@ -57,10 +59,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Align(
               alignment: Alignment.topRight,
               child: TextButton(
-                onPressed: () => Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                ),
+                onPressed: () {
+                  prefs.setBool('onboarded', true);
+                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                },
                 child: const Text('Skip', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
               ),
             ),

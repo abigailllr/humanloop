@@ -1,42 +1,40 @@
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../models/user.dart';
+import 'api_service.dart';
 
-/// Mock auth service. Replace sign-in methods with real OAuth + backend JWT
-/// when the backend is ready.
 class AuthService {
-  static AppUser? _currentUser;
+  static final _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
 
-  static AppUser? get currentUser => _currentUser;
-  static bool get isSignedIn => _currentUser != null;
-
-  /// Mock Google Sign-In — navigates to main app without real OAuth.
-  static Future<AppUser> signInWithGoogle() async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    _currentUser = const AppUser(
-      id: 'google-mock-001',
-      name: 'Alex Johnson',
-      email: 'alex@gmail.com',
-      credits: 4,
-      submissions: 3,
-      rank: 42,
-    );
-    return _currentUser!;
+  static Future<({AppUser user, String token})> signInWithGoogle() async {
+    final account = await _googleSignIn.signIn();
+    if (account == null) throw Exception('sign-in cancelled');
+    final auth = await account.authentication;
+    final idToken = auth.idToken;
+    if (idToken == null) throw Exception('no id token');
+    final jwt = await ApiService.authGoogle(idToken);
+    final profile = await ApiService.getProfile(token: jwt);
+    final user = AppUser.fromJson(profile.isNotEmpty ? profile : {'id': 'google:${account.id}', 'name': account.displayName ?? '', 'email': account.email});
+    return (user: user, token: jwt);
   }
 
-  /// Mock Apple Sign-In — navigates to main app without real OAuth.
-  static Future<AppUser> signInWithApple() async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    _currentUser = const AppUser(
-      id: 'apple-mock-001',
-      name: 'Alex Johnson',
-      email: 'alex@privaterelay.appleid.com',
-      credits: 4,
-      submissions: 3,
-      rank: 42,
+  static Future<({AppUser user, String token})> signInWithApple() async {
+    final credential = await SignInWithApple.getAppleIDCredential(
+      scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
     );
-    return _currentUser!;
+    final name = [credential.givenName, credential.familyName].where((s) => s != null && s.isNotEmpty).join(' ');
+    final jwt = await ApiService.authApple(
+      identityToken: credential.identityToken ?? '',
+      userId: credential.userIdentifier ?? '',
+      email: credential.email ?? '',
+      name: name,
+    );
+    final profile = await ApiService.getProfile(token: jwt);
+    final user = AppUser.fromJson(profile.isNotEmpty ? profile : {'id': 'apple:${credential.userIdentifier}', 'name': name, 'email': credential.email ?? ''});
+    return (user: user, token: jwt);
   }
 
   static Future<void> signOut() async {
-    _currentUser = null;
+    await _googleSignIn.signOut();
   }
 }

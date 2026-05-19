@@ -1,20 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'theme/colors.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/login_screen.dart';
 import 'screens/feed_screen.dart';
 import 'screens/camera_screen.dart';
 import 'screens/leaderboard_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
 
-void main() {
+late SharedPreferences prefs;
+
+final prefsProvider = Provider<SharedPreferences>((_) => prefs);
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
   ));
-  runApp(const HumanLoopApp());
+  prefs = await SharedPreferences.getInstance();
+  runApp(const ProviderScope(child: HumanLoopApp()));
 }
 
 class HumanLoopApp extends StatelessWidget {
@@ -22,6 +30,18 @@ class HumanLoopApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasOnboarded = prefs.getBool('onboarded') ?? false;
+    final hasToken = prefs.getString('auth_token') != null;
+
+    Widget home;
+    if (hasToken) {
+      home = const RootNav();
+    } else if (hasOnboarded) {
+      home = const LoginScreen();
+    } else {
+      home = const OnboardingScreen();
+    }
+
     return MaterialApp(
       title: 'HumanLoop',
       debugShowCheckedModeBanner: false,
@@ -35,7 +55,7 @@ class HumanLoopApp extends StatelessWidget {
         ),
         scaffoldBackgroundColor: AppColors.background,
       ),
-      home: const OnboardingScreen(),
+      home: home,
     );
   }
 }

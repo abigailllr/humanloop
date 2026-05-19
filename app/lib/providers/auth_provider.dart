@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../main.dart';
 import '../models/user.dart';
+import '../services/api_service.dart';
 import '../services/auth_service.dart';
 
 class AuthState {
@@ -22,22 +24,44 @@ class AuthState {
 
 class AuthNotifier extends Notifier<AuthState> {
   @override
-  AuthState build() => const AuthState();
+  AuthState build() {
+    final stored = ref.read(prefsProvider).getString('auth_token');
+    if (stored != null) {
+      Future.microtask(() => _restoreFromToken(stored));
+      return AuthState(token: stored);
+    }
+    return const AuthState();
+  }
+
+  Future<void> _restoreFromToken(String token) async {
+    try {
+      final profile = await ApiService.getProfile(token: token);
+      if (profile.isNotEmpty) {
+        state = AuthState(user: AppUser.fromJson(profile), token: token);
+        return;
+      }
+    } catch (_) {}
+    ref.read(prefsProvider).remove('auth_token');
+    state = const AuthState();
+  }
 
   Future<void> signInWithGoogle() async {
     state = state.copyWith(loading: true);
-    final user = await AuthService.signInWithGoogle();
-    state = AuthState(user: user, token: 'mock-jwt-google');
+    final result = await AuthService.signInWithGoogle();
+    ref.read(prefsProvider).setString('auth_token', result.token);
+    state = AuthState(user: result.user, token: result.token);
   }
 
   Future<void> signInWithApple() async {
     state = state.copyWith(loading: true);
-    final user = await AuthService.signInWithApple();
-    state = AuthState(user: user, token: 'mock-jwt-apple');
+    final result = await AuthService.signInWithApple();
+    ref.read(prefsProvider).setString('auth_token', result.token);
+    state = AuthState(user: result.user, token: result.token);
   }
 
   Future<void> signOut() async {
     await AuthService.signOut();
+    ref.read(prefsProvider).remove('auth_token');
     state = const AuthState();
   }
 }
