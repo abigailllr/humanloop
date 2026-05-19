@@ -15,9 +15,10 @@ func CreateSubmission(ctx context.Context, s models.Submission) error {
 }
 
 func UpdateSubmissionStatus(ctx context.Context, id, status, hmdfPath string, credits int) error {
+	synthetic := status == "synthetic"
 	_, err := Pool.Exec(ctx, `
-		UPDATE submissions SET status = $1, hmdf_path = $2, credits_earned = $3 WHERE id = $4
-	`, status, hmdfPath, credits, id)
+		UPDATE submissions SET status = $1, hmdf_path = $2, credits_earned = $3, synthetic = $4 WHERE id = $5
+	`, status, hmdfPath, credits, synthetic, id)
 	return err
 }
 

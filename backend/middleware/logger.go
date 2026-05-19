@@ -17,7 +17,7 @@ func Logger(next http.Handler) http.Handler {
 			"path":     r.URL.Path,
 			"status":   rw.status,
 			"duration": time.Since(start).Milliseconds(),
-			"ip":       r.RemoteAddr,
+			"ip":       realIP(r),
 		})
 		log.Println(string(entry))
 	})

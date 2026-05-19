@@ -27,8 +27,9 @@ class Submission {
   static SubmissionStatus _parseStatus(String s) {
     if (s == 'done') return SubmissionStatus.verified;
     if (s == 'failed') return SubmissionStatus.rejected;
+    if (s == 'synthetic') return SubmissionStatus.synthetic;
     return SubmissionStatus.pending;
   }
 }
 
-enum SubmissionStatus { pending, verified, rejected }
+enum SubmissionStatus { pending, verified, rejected, synthetic }

@@ -44,6 +44,7 @@ func Migrate(ctx context.Context) error {
 		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS latitude FLOAT;
 		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS longitude FLOAT;
 		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ;
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS synthetic BOOLEAN NOT NULL DEFAULT FALSE;
 	`)
 	return err
 }
