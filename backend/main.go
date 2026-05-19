@@ -73,6 +73,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", handlers.Health)
+	mux.Handle("GET /metrics", middleware.APIKey(http.HandlerFunc(handlers.Metrics)))
 
 	authRL := middleware.RateLimitAuth
 	submitRL := middleware.RateLimitSubmit

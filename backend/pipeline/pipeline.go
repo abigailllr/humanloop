@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/abigailtech/humanloop/backend/db"
+	"github.com/abigailtech/humanloop/backend/metrics"
 )
 
 type Status string
@@ -81,6 +83,8 @@ func extractorPath() string {
 
 func (p *Pipeline) worker() {
 	for job := range p.jobs {
+		start := time.Now()
+		metrics.ActiveJobs.Inc()
 		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusProcessing})
 
 		args := []string{
@@ -97,37 +101,39 @@ func (p *Pipeline) worker() {
 
 		out, err := exec.Command("python3", args...).Output()
 
-		if err != nil {
-			p.results.Store(job.SubmissionID, JobResult{
-				SubmissionID: job.SubmissionID,
-				Status:       StatusFailed,
-				Error:        err.Error(),
-			})
-			if db.Pool != nil {
-				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
+		record := func() map[string]any {
+			if err != nil {
+				metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
+				metrics.ActiveJobs.Dec()
+				metrics.PipelineDuration.Observe(time.Since(start).Seconds())
+				p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: err.Error()})
+				if db.Pool != nil {
+					db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
+				}
+				return nil
 			}
-			continue
-		}
-
-		var record map[string]any
-		if err := json.Unmarshal(out, &record); err != nil {
-			p.results.Store(job.SubmissionID, JobResult{
-				SubmissionID: job.SubmissionID,
-				Status:       StatusFailed,
-				Error:        "invalid extractor output",
-			})
-			if db.Pool != nil {
-				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
+			var r map[string]any
+			if err := json.Unmarshal(out, &r); err != nil {
+				metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
+				metrics.ActiveJobs.Dec()
+				metrics.PipelineDuration.Observe(time.Since(start).Seconds())
+				p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: "invalid extractor output"})
+				if db.Pool != nil {
+					db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
+				}
+				return nil
 			}
+			return r
+		}()
+		if record == nil {
 			continue
 		}
 
 		if isSynthetic(record) {
-			p.results.Store(job.SubmissionID, JobResult{
-				SubmissionID: job.SubmissionID,
-				Status:       StatusFailed,
-				Error:        "synthetic video detected",
-			})
+			metrics.SubmissionsTotal.WithLabelValues("synthetic").Inc()
+			metrics.ActiveJobs.Dec()
+			metrics.PipelineDuration.Observe(time.Since(start).Seconds())
+			p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: "synthetic video detected"})
 			if db.Pool != nil {
 				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "synthetic", "", 0)
 			}
@@ -139,11 +145,10 @@ func (p *Pipeline) worker() {
 
 		hmdfPath, err := p.save(job.SubmissionID, record)
 		if err != nil {
-			p.results.Store(job.SubmissionID, JobResult{
-				SubmissionID: job.SubmissionID,
-				Status:       StatusFailed,
-				Error:        err.Error(),
-			})
+			metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
+			metrics.ActiveJobs.Dec()
+			metrics.PipelineDuration.Observe(time.Since(start).Seconds())
+			p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: err.Error()})
 			if db.Pool != nil {
 				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
 			}
@@ -154,6 +159,9 @@ func (p *Pipeline) worker() {
 			os.Remove(job.VideoPath)
 		}
 
+		metrics.SubmissionsTotal.WithLabelValues("done").Inc()
+		metrics.ActiveJobs.Dec()
+		metrics.PipelineDuration.Observe(time.Since(start).Seconds())
 		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusDone})
 		if db.Pool != nil {
 			db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "done", hmdfPath, creditsPerSubmission)

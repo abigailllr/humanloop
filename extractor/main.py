@@ -6,8 +6,9 @@ from pathlib import Path
 from vision import detect, hand_contacts
 from gemini import validate as gemini_validate
 from synthetic import check_metadata, check_motion_naturalness
+from kinematics import compute_joint_angles
 
-HMDF_VERSION = "1.5"
+HMDF_VERSION = "1.6"
 
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
@@ -105,9 +106,12 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
                 for i in range(len(hand_landmarks))
             ] or None
 
+            joint_angles = compute_joint_angles(pose_landmarks) if pose_landmarks else {}
+
             entry = {
                 "t": round(frame_index / fps, 4) if fps > 0 else 0,
                 "pose": pose_landmarks,
+                "joint_angles": joint_angles,
                 "hands": hand_landmarks,
                 "objects": objects,
                 "contacts": contacts,
@@ -173,6 +177,8 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
             "pose_landmarks": 33,
             "hand_landmarks": 21,
             "vision_model": "yolo11x",
+            "joint_angles_standard": "anatomical",
+            "joint_angles_unit": "degrees",
         },
     }
 
