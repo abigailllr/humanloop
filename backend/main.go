@@ -18,6 +18,10 @@ import (
 func main() {
 	ctx := context.Background()
 
+	if os.Getenv("JWT_SECRET") == "" {
+		log.Println("warning: JWT_SECRET not set, using insecure default")
+	}
+
 	extractedDir := os.Getenv("EXTRACTED_DIR")
 	if extractedDir == "" {
 		extractedDir = "./data/extracted"

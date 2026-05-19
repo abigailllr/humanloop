@@ -1,16 +1,50 @@
 version: "3.9"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: humanloop
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     ports:
       - "8080:8080"
     volumes:
       - ./data:/app/data
     environment:
-      DATA_DIR: /app/data
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/humanloop
+      REDIS_URL: redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      API_KEY: ${API_KEY}
+      EXTRACTOR_PATH: /extractor/main.py
+      EXTRACTED_DIR: /app/data/extracted
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      AWS_BUCKET: ${AWS_BUCKET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
-  extractor:
-    build: ./extractor
-    volumes:
-      - ./data:/app/data
+volumes:
+  postgres_data:

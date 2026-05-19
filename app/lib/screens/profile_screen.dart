@@ -31,7 +31,9 @@ class ProfileScreen extends ConsumerWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {},
+                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Cash out coming soon.')),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
@@ -146,7 +148,7 @@ class _ActivityCard extends StatelessWidget {
           const SizedBox(height: 14),
           _ActivityRow(icon: Icons.check_circle_outline, label: 'Verified', value: '${(submissions * 0.8).round()}'),
           const SizedBox(height: 14),
-          _ActivityRow(icon: Icons.bolt_outlined, label: 'Challenges Done', value: '5'),
+          _ActivityRow(icon: Icons.bolt_outlined, label: 'Challenges Done', value: '$submissions'),
         ],
       ),
     );

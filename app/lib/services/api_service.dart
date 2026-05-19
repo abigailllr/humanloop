@@ -7,6 +7,31 @@ import '../models/user.dart';
 class ApiService {
   static const _base = String.fromEnvironment('API_URL', defaultValue: 'http://localhost:8080');
 
+  static Future<String> authGoogle(String idToken) async {
+    final res = await http.post(
+      Uri.parse('$_base/v1/auth/google'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'id_token': idToken}),
+    );
+    if (res.statusCode != 200) throw Exception('google auth failed');
+    return jsonDecode(res.body)['token'] as String;
+  }
+
+  static Future<String> authApple({
+    required String identityToken,
+    required String userId,
+    String email = '',
+    String name = '',
+  }) async {
+    final res = await http.post(
+      Uri.parse('$_base/v1/auth/apple'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'identity_token': identityToken, 'user_id': userId, 'email': email, 'name': name}),
+    );
+    if (res.statusCode != 200) throw Exception('apple auth failed');
+    return jsonDecode(res.body)['token'] as String;
+  }
+
   static Future<List<Challenge>> getChallenges() async {
     final res = await http.get(Uri.parse('$_base/v1/challenges'));
     if (res.statusCode != 200) return [];
