@@ -6,13 +6,13 @@ from pathlib import Path
 from vision import detect, hand_contacts
 from gemini import validate as gemini_validate
 
-HMDF_VERSION = "1.2"
+HMDF_VERSION = "1.3"
 
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
 
 
-def extract(video_path: str, submission_id: str = "", challenge_id: str = "", challenge_title: str = "", user_id: str = "") -> dict:
+def extract(video_path: str, submission_id: str = "", challenge_id: str = "", challenge_title: str = "", user_id: str = "", lat: float = 0.0, lng: float = 0.0, captured_at: str = "") -> dict:
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     frames = []
@@ -57,7 +57,7 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
 
     validation = gemini_validate(video_path, challenge_title)
 
-    return {
+    record = {
         "hmdf_version": HMDF_VERSION,
         "source": "humanloop",
         "submission_id": submission_id,
@@ -76,6 +76,13 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
             "vision_model": "yolo11x",
         },
     }
+
+    if lat != 0.0 or lng != 0.0:
+        record["location"] = {"lat": lat, "lng": lng}
+    if captured_at:
+        record["captured_at"] = captured_at
+
+    return record
 
 
 def validate(video_path: str) -> dict:
@@ -114,4 +121,7 @@ if __name__ == "__main__":
         ch_id = sys.argv[4] if len(sys.argv) > 4 else ""
         ch_title = sys.argv[5] if len(sys.argv) > 5 else ""
         u_id = sys.argv[6] if len(sys.argv) > 6 else ""
-        print(json.dumps(extract(video, sub_id, ch_id, ch_title, u_id)))
+        lat = float(sys.argv[7]) if len(sys.argv) > 7 else 0.0
+        lng = float(sys.argv[8]) if len(sys.argv) > 8 else 0.0
+        captured_at = sys.argv[9] if len(sys.argv) > 9 else ""
+        print(json.dumps(extract(video, sub_id, ch_id, ch_title, u_id, lat, lng, captured_at)))

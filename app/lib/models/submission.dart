@@ -18,14 +18,17 @@ class Submission {
   factory Submission.fromJson(Map<String, dynamic> j) => Submission(
         id: j['id'] as String,
         challengeId: j['challenge_id'] as String,
-        challengeTitle: j['challenge_title'] as String,
-        submittedAt: DateTime.parse(j['submitted_at'] as String),
-        status: SubmissionStatus.values.firstWhere(
-          (s) => s.name == (j['status'] as String? ?? 'pending'),
-          orElse: () => SubmissionStatus.pending,
-        ),
+        challengeTitle: j['challenge_title'] as String? ?? '',
+        submittedAt: DateTime.parse((j['submitted_at'] ?? j['created_at']) as String),
+        status: _parseStatus(j['status'] as String? ?? 'pending'),
         creditsEarned: j['credits_earned'] as int? ?? 0,
       );
+
+  static SubmissionStatus _parseStatus(String s) {
+    if (s == 'done') return SubmissionStatus.verified;
+    if (s == 'failed') return SubmissionStatus.rejected;
+    return SubmissionStatus.pending;
+  }
 }
 
 enum SubmissionStatus { pending, verified, rejected }

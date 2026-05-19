@@ -31,6 +31,10 @@ func main() {
 		defer db.Close()
 		if err := db.Migrate(ctx); err != nil {
 			log.Println("db migrate:", err)
+		} else {
+			if err := db.SeedChallenges(ctx); err != nil {
+				log.Println("db seed:", err)
+			}
 		}
 	}
 
@@ -74,6 +78,9 @@ func main() {
 	mux.Handle("POST /v1/submit/{challengeId}", middleware.Auth(http.HandlerFunc(handlers.Submit)))
 	mux.Handle("GET /v1/profile", middleware.Auth(http.HandlerFunc(handlers.GetProfile)))
 	mux.Handle("GET /v1/submissions/{id}", middleware.Auth(http.HandlerFunc(handlers.GetSubmission)))
+
+	mux.HandleFunc("GET /v1/leaderboard", handlers.GetLeaderboard)
+	mux.Handle("GET /v1/submissions", middleware.Auth(http.HandlerFunc(handlers.GetUserSubmissions)))
 
 	mux.Handle("GET /v1/data/export", middleware.APIKey(http.HandlerFunc(handlers.ExportData)))
 

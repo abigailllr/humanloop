@@ -13,6 +13,6 @@ func Health(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{
 		"status":  "ok",
 		"uptime":  time.Since(startTime).Seconds(),
-		"version": "1.2",
+		"version": "1.3",
 	})
 }

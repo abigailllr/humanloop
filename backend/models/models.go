@@ -18,14 +18,19 @@ type Challenge struct {
 }
 
 type Submission struct {
-	ID          string  `json:"id"`
-	ChallengeID string  `json:"challenge_id"`
-	UserID      string  `json:"user_id"`
-	VideoPath   string  `json:"video_path"`
-	Status      string  `json:"status"`
-	Valid       bool    `json:"valid"`
-	Duration    float64 `json:"duration"`
-	CreatedAt   string  `json:"created_at"`
+	ID             string  `json:"id"`
+	ChallengeID    string  `json:"challenge_id"`
+	ChallengeTitle string  `json:"challenge_title"`
+	UserID         string  `json:"user_id"`
+	VideoPath      string  `json:"video_path"`
+	Status         string  `json:"status"`
+	Valid          bool    `json:"valid"`
+	CreditsEarned  int     `json:"credits_earned"`
+	Duration       float64 `json:"duration"`
+	Latitude       float64 `json:"latitude,omitempty"`
+	Longitude      float64 `json:"longitude,omitempty"`
+	CapturedAt     string  `json:"captured_at,omitempty"`
+	CreatedAt      string  `json:"created_at"`
 }
 
 type Landmark struct {
@@ -71,15 +76,22 @@ type HMDFValidation struct {
 	Skipped    bool    `json:"skipped,omitempty"`
 }
 
+type Location struct {
+	Lat float64 `json:"lat"`
+	Lng float64 `json:"lng"`
+}
+
 type HMDFRecord struct {
-	HMDFVersion    string       `json:"hmdf_version"`
-	Source         string       `json:"source"`
-	SubmissionID   string       `json:"submission_id"`
-	ChallengeID    string       `json:"challenge_id"`
-	ChallengeTitle string       `json:"challenge_title"`
-	UserID         string       `json:"user_id"`
-	FPS            float64      `json:"fps"`
-	FrameCount     int          `json:"frame_count"`
+	HMDFVersion    string          `json:"hmdf_version"`
+	Source         string          `json:"source"`
+	SubmissionID   string          `json:"submission_id"`
+	ChallengeID    string          `json:"challenge_id"`
+	ChallengeTitle string          `json:"challenge_title"`
+	UserID         string          `json:"user_id"`
+	Location       *Location       `json:"location,omitempty"`
+	CapturedAt     string          `json:"captured_at,omitempty"`
+	FPS            float64         `json:"fps"`
+	FrameCount     int             `json:"frame_count"`
 	Frames         []HMDFFrame     `json:"frames"`
 	Validation     *HMDFValidation `json:"validation,omitempty"`
 	Metadata       HMDFMetadata    `json:"metadata"`
