@@ -90,3 +90,66 @@ def compute_joint_angles(pose: list) -> dict:
         }
 
     return angles
+
+
+def to_motor_state(joint_angles: dict, prev_angles: dict | None, dt: float) -> dict:
+    order = [
+        ("left",  "shoulder_flexion"),
+        ("left",  "shoulder_abduction"),
+        ("left",  "elbow_flexion"),
+        ("left",  "wrist_flexion"),
+        ("left",  "wrist_deviation"),
+        ("right", "shoulder_flexion"),
+        ("right", "shoulder_abduction"),
+        ("right", "elbow_flexion"),
+        ("right", "wrist_flexion"),
+        ("right", "wrist_deviation"),
+    ]
+
+    q, dq, ddq = [], [], []
+    prev_dq_cache = getattr(to_motor_state, "_prev_dq", [0.0] * len(order))
+
+    for i, (side, name) in enumerate(order):
+        angle = joint_angles.get(side, {}).get(name, 0.0)
+        q_rad = math.radians(angle)
+        q.append(round(q_rad, 6))
+
+        if prev_angles and dt > 0:
+            prev_angle = prev_angles.get(side, {}).get(name, angle)
+            dq_val = math.radians(angle - prev_angle) / dt
+        else:
+            dq_val = 0.0
+        dq.append(round(dq_val, 6))
+
+        prev_dq = prev_dq_cache[i] if i < len(prev_dq_cache) else 0.0
+        ddq_val = (dq_val - prev_dq) / dt if dt > 0 else 0.0
+        ddq.append(round(ddq_val, 6))
+
+    to_motor_state._prev_dq = dq
+
+    return {
+        "q":   q,
+        "dq":  dq,
+        "ddq": ddq,
+    }
+
+
+def build_observation_vector(motor_state: dict, prev_motor_state: dict | None, t: float, period: float = 0.8) -> list[float]:
+    q   = motor_state.get("q",   [0.0] * 10)
+    dq  = motor_state.get("dq",  [0.0] * 10)
+
+    q0 = [0.0] * len(q)
+
+    prev_action = prev_motor_state.get("q", q0) if prev_motor_state else q0
+
+    phase = t % period
+    sin_phase = round(math.sin(2 * math.pi * phase / period), 6)
+    cos_phase = round(math.cos(2 * math.pi * phase / period), 6)
+
+    obs = (
+        [round(q_i - q0_i, 6) for q_i, q0_i in zip(q, q0)]
+        + [round(v, 6) for v in dq]
+        + [round(v, 6) for v in prev_action]
+        + [sin_phase, cos_phase]
+    )
+    return obs

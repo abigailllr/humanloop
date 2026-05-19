@@ -38,9 +38,6 @@ def check_metadata(video_path: str) -> dict:
     if len(missing) == 4:
         signals.append("no_device_metadata")
 
-    if "creation_time" not in tags and "date" not in tags:
-        signals.append("no_creation_time")
-
     streams = info.get("streams", [])
     video_streams = [s for s in streams if s.get("codec_type") == "video"]
     if video_streams:
@@ -48,15 +45,6 @@ def check_metadata(video_path: str) -> dict:
         codec = vstream.get("codec_name", "")
         if codec not in ("h264", "hevc", "h265", "vp9", "av1", "prores", "mjpeg"):
             signals.append(f"unusual_codec:{codec}")
-
-        r_frame_rate = vstream.get("r_frame_rate", "0/1")
-        try:
-            num, den = r_frame_rate.split("/")
-            fps = int(num) / int(den)
-            if fps in (24.0, 25.0, 30.0, 60.0) and fps == round(fps):
-                signals.append("suspiciously_round_fps")
-        except Exception:
-            pass
 
     return {
         "suspicious": len(signals) > 0,
@@ -69,7 +57,7 @@ def check_motion_naturalness(frames: list) -> dict:
     pose_sequences = []
     for frame in frames:
         pose = frame.get("pose")
-        if pose and len(pose) >= 11:
+        if pose and len(pose) >= 17:
             wrist_l = pose[15]
             wrist_r = pose[16]
             pose_sequences.append((wrist_l["x"], wrist_l["y"], wrist_r["x"], wrist_r["y"]))
