@@ -1,51 +1,123 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
+import '../services/api_service.dart';
+import '../models/submission.dart';
 import '../theme/colors.dart';
 import '../theme/text_styles.dart';
+import '../widgets/submission_card.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  late Future<List<Submission>> _submissions;
+
+  @override
+  void initState() {
+    super.initState();
+    final token = ref.read(authProvider).token ?? '';
+    _submissions = ApiService.getUserSubmissions(token: token);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
     final credits = user?.credits ?? 0;
     final submissions = user?.submissions ?? 0;
     final name = user?.name ?? 'Contributor';
 
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Profile', style: AppTextStyles.screenTitle),
-            const SizedBox(height: 28),
-            _AvatarCard(name: name, submissions: submissions),
-            const SizedBox(height: 20),
-            _BalanceCard(credits: credits),
-            const SizedBox(height: 20),
-            _ActivityCard(submissions: submissions),
-            const SizedBox(height: 28),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Cash out coming soon.')),
+      child: FutureBuilder<List<Submission>>(
+        future: _submissions,
+        builder: (ctx, snap) {
+          final list = snap.data ?? [];
+          final verified = list.where((s) => s.status == SubmissionStatus.verified).length;
+          final earned = list.fold(0, (sum, s) => sum + s.creditsEarned);
+
+          return CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Profile', style: AppTextStyles.screenTitle),
+                      const SizedBox(height: 28),
+                      _AvatarCard(name: name, submissions: submissions),
+                      const SizedBox(height: 20),
+                      _BalanceCard(credits: credits),
+                      const SizedBox(height: 20),
+                      _ActivityCard(submissions: submissions, verified: verified),
+                      const SizedBox(height: 28),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Cash out coming soon.')),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: Text('Cash Out', style: AppTextStyles.buttonLabel),
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      if (list.isNotEmpty || snap.connectionState == ConnectionState.done) ...[
+                        Text('My Submissions', style: AppTextStyles.sectionTitle),
+                        const SizedBox(height: 4),
+                        if (list.isNotEmpty) ...[
+                          Text('${list.length} total · $verified verified · $earned credits', style: AppTextStyles.caption),
+                          const SizedBox(height: 16),
+                        ],
+                      ],
+                    ],
+                  ),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: Text('Cash Out', style: AppTextStyles.buttonLabel),
               ),
-            ),
-          ],
-        ),
+              if (snap.connectionState == ConnectionState.waiting)
+                const SliverToBoxAdapter(
+                  child: Center(child: Padding(
+                    padding: EdgeInsets.only(top: 24),
+                    child: CircularProgressIndicator(),
+                  )),
+                )
+              else if (list.isEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 24),
+                    child: Column(
+                      children: [
+                        Icon(Icons.videocam_off_outlined, size: 40, color: AppColors.textTertiary),
+                        const SizedBox(height: 10),
+                        Text('No submissions yet', style: AppTextStyles.bodyMedium),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (_, i) => SubmissionCard(submission: list[i]),
+                      childCount: list.length,
+                    ),
+                  ),
+                ),
+              const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
+            ],
+          );
+        },
       ),
     );
   }
@@ -125,7 +197,8 @@ class _BalanceCard extends StatelessWidget {
 
 class _ActivityCard extends StatelessWidget {
   final int submissions;
-  const _ActivityCard({required this.submissions});
+  final int verified;
+  const _ActivityCard({required this.submissions, required this.verified});
 
   @override
   Widget build(BuildContext context) {
@@ -146,7 +219,7 @@ class _ActivityCard extends StatelessWidget {
           const SizedBox(height: 16),
           _ActivityRow(icon: Icons.videocam_outlined, label: 'Videos Submitted', value: '$submissions'),
           const SizedBox(height: 14),
-          _ActivityRow(icon: Icons.check_circle_outline, label: 'Verified', value: '${(submissions * 0.8).round()}'),
+          _ActivityRow(icon: Icons.check_circle_outline, label: 'Verified', value: '$verified'),
           const SizedBox(height: 14),
           _ActivityRow(icon: Icons.bolt_outlined, label: 'Challenges Done', value: '$submissions'),
         ],

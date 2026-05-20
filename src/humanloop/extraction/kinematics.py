@@ -92,7 +92,7 @@ def compute_joint_angles(pose: list) -> dict:
     return angles
 
 
-def to_motor_state(joint_angles: dict, prev_angles: dict | None, dt: float) -> dict:
+def to_motor_state(joint_angles: dict, prev_angles: dict | None, dt: float, prev_dq: list | None = None) -> dict:
     order = [
         ("left",  "shoulder_flexion"),
         ("left",  "shoulder_abduction"),
@@ -106,8 +106,8 @@ def to_motor_state(joint_angles: dict, prev_angles: dict | None, dt: float) -> d
         ("right", "wrist_deviation"),
     ]
 
+    prev_dq_cache = prev_dq if prev_dq and len(prev_dq) == len(order) else [0.0] * len(order)
     q, dq, ddq = [], [], []
-    prev_dq_cache = getattr(to_motor_state, "_prev_dq", [0.0] * len(order))
 
     for i, (side, name) in enumerate(order):
         angle = joint_angles.get(side, {}).get(name, 0.0)
@@ -121,11 +121,8 @@ def to_motor_state(joint_angles: dict, prev_angles: dict | None, dt: float) -> d
             dq_val = 0.0
         dq.append(round(dq_val, 6))
 
-        prev_dq = prev_dq_cache[i] if i < len(prev_dq_cache) else 0.0
-        ddq_val = (dq_val - prev_dq) / dt if dt > 0 else 0.0
+        ddq_val = (dq_val - prev_dq_cache[i]) / dt if dt > 0 else 0.0
         ddq.append(round(ddq_val, 6))
-
-    to_motor_state._prev_dq = dq
 
     return {
         "q":   q,

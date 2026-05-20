@@ -55,7 +55,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Skip
             Align(
               alignment: Alignment.topRight,
               child: TextButton(
@@ -67,7 +66,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
 
-            // Pages
             Expanded(
               child: PageView.builder(
                 controller: _controller,
@@ -77,7 +75,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
 
-            // Dots + button
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
               child: Column(

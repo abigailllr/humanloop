@@ -109,8 +109,10 @@ type googleTokenInfo struct {
 	Error string `json:"error_description"`
 }
 
+var googleClient = &http.Client{Timeout: 10 * time.Second}
+
 func verifyGoogleToken(idToken string) (*googleTokenInfo, error) {
-	resp, err := http.Get("https://oauth2.googleapis.com/tokeninfo?id_token=" + idToken)
+	resp, err := googleClient.Get("https://oauth2.googleapis.com/tokeninfo?id_token=" + idToken)
 	if err != nil {
 		return nil, err
 	}

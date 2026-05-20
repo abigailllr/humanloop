@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"os"
 	"strings"
@@ -55,7 +56,7 @@ func APIKey(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.Header.Get("X-API-Key")
 		expected := os.Getenv("API_KEY")
-		if expected == "" || key != expected {
+		if expected == "" || subtle.ConstantTimeCompare([]byte(key), []byte(expected)) != 1 {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}

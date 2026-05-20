@@ -11,7 +11,7 @@ class LeaderboardTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final highlight = isCurrentUser || user.name == 'Alex Johnson';
+    final highlight = isCurrentUser;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -26,7 +26,6 @@ class LeaderboardTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Rank
           SizedBox(
             width: 32,
             child: Text(
@@ -39,7 +38,6 @@ class LeaderboardTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          // Avatar
           Container(
             width: 40,
             height: 40,
@@ -59,7 +57,6 @@ class LeaderboardTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          // Name + submissions
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,7 +79,6 @@ class LeaderboardTile extends StatelessWidget {
               ],
             ),
           ),
-          // Credits
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

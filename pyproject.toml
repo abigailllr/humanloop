@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "humanloop"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "mediapipe==0.10.14",
+    "opencv-python==4.10.0.84",
+    "ultralytics>=8.0.0",
+    "pandas>=2.0.0",
+    "pyarrow>=14.0.0",
+    "google-generativeai>=0.8.0",
+    "modern-robotics>=1.5.0",
+    "neat-python>=0.92",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
