@@ -1,10 +1,12 @@
 package pipeline
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +38,9 @@ type Job struct {
 	Latitude       float64
 	Longitude      float64
 	CapturedAt     string
+	Robot          string
+	VideoHash      string
+	ConsentVersion string
 }
 
 type JobResult struct {
@@ -45,15 +50,17 @@ type JobResult struct {
 }
 
 type Pipeline struct {
-	jobs    chan Job
-	results sync.Map
-	outDir  string
+	jobs       chan Job
+	results    sync.Map
+	outDir     string
+	hmdfUpload func(submissionID string, r io.Reader) (string, error)
 }
 
-func New(workers int, outDir string) *Pipeline {
+func New(workers int, outDir string, hmdfUpload func(submissionID string, r io.Reader) (string, error)) *Pipeline {
 	p := &Pipeline{
-		jobs:   make(chan Job, 256),
-		outDir: outDir,
+		jobs:       make(chan Job, 256),
+		outDir:     outDir,
+		hmdfUpload: hmdfUpload,
 	}
 	for i := 0; i < workers; i++ {
 		go p.worker()
@@ -87,6 +94,11 @@ func (p *Pipeline) worker() {
 		metrics.ActiveJobs.Inc()
 		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusProcessing})
 
+		robot := job.Robot
+		if robot == "" {
+			robot = "generic_bimanual"
+		}
+
 		args := []string{
 			extractorPath(), "extract",
 			job.VideoPath,
@@ -97,6 +109,7 @@ func (p *Pipeline) worker() {
 			fmt.Sprintf("%f", job.Latitude),
 			fmt.Sprintf("%f", job.Longitude),
 			job.CapturedAt,
+			robot,
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -147,7 +160,7 @@ func (p *Pipeline) worker() {
 			continue
 		}
 
-		hmdfPath, err := p.save(job.SubmissionID, record)
+		localPath, err := p.save(job.SubmissionID, record)
 		if err != nil {
 			metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
 			metrics.ActiveJobs.Dec()
@@ -159,11 +172,25 @@ func (p *Pipeline) worker() {
 			continue
 		}
 
+		hmdfPath := localPath
+		if p.hmdfUpload != nil {
+			f, err := os.Open(localPath)
+			if err == nil {
+				if s3Path, err := p.hmdfUpload(job.SubmissionID, f); err == nil {
+					hmdfPath = s3Path
+				}
+				f.Close()
+			}
+		}
+
 		if isLocalPath(job.VideoPath) {
 			if err := os.Remove(job.VideoPath); err != nil {
 				fmt.Println("remove video:", err)
 			}
 		}
+
+		qs := qualityScore(record)
+		extractorVersion, _ := record["hmdf_version"].(string)
 
 		metrics.SubmissionsTotal.WithLabelValues("done").Inc()
 		metrics.ActiveJobs.Dec()
@@ -171,7 +198,9 @@ func (p *Pipeline) worker() {
 		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusDone})
 		if db.Pool != nil {
 			db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "done", hmdfPath, creditsPerSubmission)
+			db.SetSubmissionQuality(context.Background(), job.SubmissionID, qs, extractorVersion)
 			db.AddCredits(context.Background(), job.UserID, creditsPerSubmission)
+			db.LogCreditTransaction(context.Background(), job.UserID, job.SubmissionID, "submission", creditsPerSubmission)
 			db.IncrementChallengeSubmissions(context.Background(), job.ChallengeID)
 		}
 	}
@@ -183,16 +212,20 @@ func (p *Pipeline) save(submissionID string, data map[string]any) (string, error
 	}
 
 	dst := filepath.Join(p.outDir, submissionID+".hmdf.json.gz")
-	f, err := os.Create(dst)
-	if err != nil {
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if err := json.NewEncoder(gz).Encode(data); err != nil {
 		return "", err
 	}
-	defer f.Close()
+	if err := gz.Close(); err != nil {
+		return "", err
+	}
 
-	gz := gzip.NewWriter(f)
-	defer gz.Close()
-
-	return dst, json.NewEncoder(gz).Encode(data)
+	if err := os.WriteFile(dst, buf.Bytes(), 0644); err != nil {
+		return "", err
+	}
+	return dst, nil
 }
 
 func isLocalPath(path string) bool {
@@ -206,4 +239,37 @@ func isSynthetic(record map[string]any) bool {
 	}
 	synthetic, _ := sd["synthetic"].(bool)
 	return synthetic
+}
+
+func qualityScore(record map[string]any) float64 {
+	frames, _ := record["frames"].([]any)
+	if len(frames) == 0 {
+		return 0
+	}
+	withMotorState := 0
+	for _, f := range frames {
+		fr, ok := f.(map[string]any)
+		if !ok {
+			continue
+		}
+		ms, _ := fr["motor_state"].(map[string]any)
+		q, _ := ms["q"].([]any)
+		if len(q) > 0 {
+			withMotorState++
+		}
+	}
+	coverage := float64(withMotorState) / float64(len(frames))
+	fps, _ := record["fps"].(float64)
+	if fps == 0 {
+		fps = 30
+	}
+	fpsScore := fps / 30.0
+	if fpsScore > 1 {
+		fpsScore = 1
+	}
+	durationScore := float64(len(frames)) / 300.0
+	if durationScore > 1 {
+		durationScore = 1
+	}
+	return (coverage + fpsScore + durationScore) / 3.0
 }

@@ -7,10 +7,8 @@ from pathlib import Path
 
 import neat
 
-OBS_DIM = 32
-ACTION_DIM = 10
 
-_NEAT_CONFIG = """
+_NEAT_CONFIG_TEMPLATE = """
 [NEAT]
 fitness_criterion     = max
 fitness_threshold     = -0.001
@@ -42,8 +40,8 @@ initial_connection      = full_direct
 node_add_prob           = 0.2
 node_delete_prob        = 0.2
 num_hidden              = 0
-num_inputs              = 32
-num_outputs             = 10
+num_inputs              = {obs_dim}
+num_outputs             = {action_dim}
 response_init_mean      = 1.0
 response_init_stdev     = 0.0
 response_max_value      = 30.0
@@ -81,8 +79,22 @@ def _load_hmdf(path: str) -> dict:
         return json.load(f)
 
 
-def _load_dataset(data_dir: str, challenge_id: str = "") -> list[tuple[list, list]]:
+def _detect_dims(record: dict) -> tuple[int, int]:
+    for frame in record.get("frames", []):
+        obs = frame.get("obs")
+        q = frame.get("motor_state", {}).get("q")
+        if obs and q:
+            return len(obs), len(q)
+    meta = record.get("metadata", {})
+    obs_dim = meta.get("obs_dim", 32)
+    action_dim = meta.get("action_dim", 10)
+    return obs_dim, action_dim
+
+
+def _load_dataset(data_dir: str, challenge_id: str = "") -> tuple[list[tuple[list, list]], int, int]:
     pairs = []
+    obs_dim = action_dim = 0
+
     for path in Path(data_dir).glob("*.gz"):
         try:
             record = _load_hmdf(str(path))
@@ -92,25 +104,24 @@ def _load_dataset(data_dir: str, challenge_id: str = "") -> list[tuple[list, lis
             continue
         if record.get("synthetic_detection", {}).get("synthetic"):
             continue
-        conf = record.get("validation", {}).get("confidence", 0.0)
-        if conf < 0.5:
+        if record.get("validation", {}).get("confidence", 0.0) < 0.5:
             continue
+
+        if obs_dim == 0:
+            obs_dim, action_dim = _detect_dims(record)
 
         frames = record.get("frames", [])
         for i, frame in enumerate(frames):
             obs = frame.get("obs")
-            if not obs or len(obs) != OBS_DIM:
+            if not obs or len(obs) != obs_dim:
                 continue
-            if i + 1 < len(frames):
-                next_ms = frames[i + 1].get("motor_state", {})
-            else:
-                next_ms = frame.get("motor_state", {})
+            next_ms = frames[i + 1].get("motor_state", {}) if i + 1 < len(frames) else frame.get("motor_state", {})
             action = next_ms.get("q", [])
-            if len(action) != ACTION_DIM:
+            if len(action) != action_dim:
                 continue
             pairs.append((obs, action))
 
-    return pairs
+    return pairs, obs_dim, action_dim
 
 
 def _mse(predicted: list, target: list) -> float:
@@ -118,20 +129,17 @@ def _mse(predicted: list, target: list) -> float:
 
 
 def _evaluate(genomes, config, dataset):
-    nets = [(gid, neat.nn.FeedForwardNetwork.create(genome, config), genome) for gid, genome in genomes]
     sample = dataset[:2000] if len(dataset) > 2000 else dataset
-
-    for gid, net, genome in nets:
-        total_mse = 0.0
-        for obs, action in sample:
-            output = net.activate(obs)
-            total_mse += _mse(output, action)
-        genome.fitness = -(total_mse / max(len(sample), 1))
+    for gid, genome in genomes:
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        total = sum(_mse(net.activate(obs), action) for obs, action in sample)
+        genome.fitness = -(total / max(len(sample), 1))
 
 
-def _make_config() -> neat.Config:
+def _make_config(obs_dim: int, action_dim: int) -> neat.Config:
+    cfg_str = _NEAT_CONFIG_TEMPLATE.format(obs_dim=obs_dim, action_dim=action_dim)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".cfg", delete=False) as tmp:
-        tmp.write(_NEAT_CONFIG)
+        tmp.write(cfg_str)
         cfg_path = tmp.name
     try:
         return neat.Config(
@@ -146,11 +154,11 @@ def _make_config() -> neat.Config:
 
 
 def train(data_dir: str, out_path: str, generations: int = 50, challenge_id: str = "") -> None:
-    dataset = _load_dataset(data_dir, challenge_id)
+    dataset, obs_dim, action_dim = _load_dataset(data_dir, challenge_id)
     if not dataset:
         raise ValueError("no valid training data found")
 
-    config = _make_config()
+    config = _make_config(obs_dim, action_dim)
     pop = neat.Population(config)
     pop.add_reporter(neat.StdOutReporter(True))
     pop.add_reporter(neat.StatisticsReporter())
@@ -158,12 +166,18 @@ def train(data_dir: str, out_path: str, generations: int = 50, challenge_id: str
     winner = pop.run(lambda genomes, cfg: _evaluate(genomes, cfg, dataset), generations)
 
     with open(out_path, "wb") as f:
-        pickle.dump(winner, f)
+        pickle.dump((winner, obs_dim, action_dim), f)
 
 
 def run(genome_path: str, obs: list[float]) -> list[float]:
-    config = _make_config()
     with open(genome_path, "rb") as f:
-        genome = pickle.load(f)
+        payload = pickle.load(f)
+
+    if isinstance(payload, tuple):
+        genome, obs_dim, action_dim = payload
+    else:
+        genome, obs_dim, action_dim = payload, 32, 10
+
+    config = _make_config(obs_dim, action_dim)
     net = neat.nn.FeedForwardNetwork.create(genome, config)
     return list(net.activate(obs))

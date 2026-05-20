@@ -112,9 +112,12 @@ def export(hmdf_paths: list[str], out_dir: str, task_description: str = "") -> N
             for row in rows:
                 f.write(json.dumps(row) + "\n")
 
+    first_record = _load_hmdf(hmdf_paths[0]) if hmdf_paths else {}
+    robot_type = first_record.get("metadata", {}).get("robot_type", "generic_arm")
+
     info = {
         "codebase_version": "v2.0",
-        "robot_type":       "generic_arm",
+        "robot_type":       robot_type,
         "total_episodes":   episode_index,
         "total_frames":     total_frames,
         "fps":              fps,

@@ -44,8 +44,13 @@ func CreateChallenge(w http.ResponseWriter, r *http.Request) {
 		rand.Read(b)
 		body.ID = "c" + hex.EncodeToString(b)
 	}
-	if body.Difficulty == "" {
+	switch body.Difficulty {
+	case "Easy", "Medium", "Hard":
+	case "":
 		body.Difficulty = "Easy"
+	default:
+		http.Error(w, "difficulty must be Easy, Medium, or Hard", http.StatusBadRequest)
+		return
 	}
 
 	c := models.Challenge{ID: body.ID, Title: body.Title, Description: body.Description, Difficulty: body.Difficulty}
@@ -70,6 +75,10 @@ func UpdateChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if body.Difficulty != "" && body.Difficulty != "Easy" && body.Difficulty != "Medium" && body.Difficulty != "Hard" {
+		http.Error(w, "difficulty must be Easy, Medium, or Hard", http.StatusBadRequest)
 		return
 	}
 	c := models.Challenge{ID: id, Title: body.Title, Description: body.Description, Difficulty: body.Difficulty}

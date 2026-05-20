@@ -32,19 +32,56 @@ func Migrate(ctx context.Context) error {
 			latitude       FLOAT,
 			longitude      FLOAT,
 			captured_at    TIMESTAMPTZ,
-			duration       FLOAT,
+			synthetic      BOOLEAN NOT NULL DEFAULT FALSE,
+			robot          TEXT NOT NULL DEFAULT 'generic_bimanual',
 			created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
-		CREATE INDEX IF NOT EXISTS submissions_user_id ON submissions(user_id);
-		CREATE INDEX IF NOT EXISTS submissions_challenge_id ON submissions(challenge_id);
-		CREATE INDEX IF NOT EXISTS submissions_status ON submissions(status);
+		CREATE TABLE IF NOT EXISTS credit_transactions (
+			id             BIGSERIAL PRIMARY KEY,
+			user_id        TEXT NOT NULL REFERENCES users(id),
+			submission_id  TEXT REFERENCES submissions(id),
+			amount         INT  NOT NULL,
+			reason         TEXT NOT NULL,
+			created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
 
-		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS credits_earned INT NOT NULL DEFAULT 0;
-		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS latitude FLOAT;
-		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS longitude FLOAT;
-		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ;
-		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS synthetic BOOLEAN NOT NULL DEFAULT FALSE;
+		CREATE INDEX IF NOT EXISTS submissions_user_id      ON submissions(user_id);
+		CREATE INDEX IF NOT EXISTS submissions_challenge_id ON submissions(challenge_id);
+		CREATE INDEX IF NOT EXISTS submissions_status       ON submissions(status);
+		CREATE INDEX IF NOT EXISTS submissions_synthetic    ON submissions(synthetic) WHERE synthetic = TRUE;
+		CREATE INDEX IF NOT EXISTS credit_tx_user_id        ON credit_transactions(user_id);
+
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS synthetic          BOOLEAN  NOT NULL DEFAULT FALSE;
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS robot             TEXT     NOT NULL DEFAULT 'generic_bimanual';
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS quality_score     FLOAT    NOT NULL DEFAULT 0;
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS extractor_version TEXT     NOT NULL DEFAULT '';
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS consent_version   TEXT     NOT NULL DEFAULT '1.0';
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS video_hash        TEXT     NOT NULL DEFAULT '';
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS approved          BOOLEAN  NOT NULL DEFAULT TRUE;
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS tags              TEXT[]   NOT NULL DEFAULT '{}';
+
+		CREATE TABLE IF NOT EXISTS datasets (
+			id           TEXT PRIMARY KEY,
+			title        TEXT NOT NULL,
+			description  TEXT NOT NULL DEFAULT '',
+			robot_type   TEXT NOT NULL DEFAULT '',
+			challenge_id TEXT NOT NULL DEFAULT '',
+			min_quality  FLOAT NOT NULL DEFAULT 0,
+			created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS buyer_keys (
+			id         TEXT PRIMARY KEY,
+			key_hash   TEXT NOT NULL UNIQUE,
+			label      TEXT NOT NULL,
+			dataset_id TEXT,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS submissions_video_hash ON submissions(video_hash) WHERE video_hash != '';
+		CREATE INDEX IF NOT EXISTS submissions_approved   ON submissions(approved)   WHERE approved = FALSE;
+		CREATE INDEX IF NOT EXISTS submissions_quality    ON submissions(quality_score);
 	`)
 	return err
 }

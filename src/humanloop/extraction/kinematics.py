@@ -1,5 +1,7 @@
 import math
 
+from ..robots.config import RobotConfig, ROBOTS
+
 
 def _vec(a, b):
     return (b["x"] - a["x"], b["y"] - a["y"], b["z"] - a["z"])
@@ -64,18 +66,18 @@ def compute_joint_angles(pose: list) -> dict:
         hip      = lm(f"{side}_hip")
         opp_sh   = lm(f"{opp}_shoulder")
 
-        trunk_axis  = _vec(hip, shoulder)
-        lateral     = _vec(shoulder, opp_sh) if side == "l" else _vec(opp_sh, shoulder)
-        upper_arm   = _vec(shoulder, elbow)
-        forearm     = _vec(elbow, wrist)
+        trunk_axis = _vec(hip, shoulder)
+        lateral    = _vec(shoulder, opp_sh) if side == "l" else _vec(opp_sh, shoulder)
+        upper_arm  = _vec(shoulder, elbow)
+        forearm    = _vec(elbow, wrist)
 
-        shoulder_flex  = _signed_angle_deg(trunk_axis, upper_arm, lateral)
+        shoulder_flex   = _signed_angle_deg(trunk_axis, upper_arm, lateral)
         shoulder_abduct = _angle_deg(lateral, upper_arm)
-        elbow_flex     = 180.0 - _angle_deg(upper_arm, forearm)
+        elbow_flex      = 180.0 - _angle_deg(upper_arm, forearm)
 
-        index  = lm(f"{side}_index")
-        pinky  = lm(f"{side}_pinky")
-        hand   = _vec(wrist, index)
+        index    = lm(f"{side}_index")
+        pinky    = lm(f"{side}_pinky")
+        hand     = _vec(wrist, index)
         hand_lat = _vec(pinky, index)
         wrist_flex    = _signed_angle_deg(forearm, hand, hand_lat)
         wrist_deviate = _signed_angle_deg(forearm, hand, _cross(forearm, hand_lat))
@@ -92,50 +94,83 @@ def compute_joint_angles(pose: list) -> dict:
     return angles
 
 
-def to_motor_state(joint_angles: dict, prev_angles: dict | None, dt: float, prev_dq: list | None = None) -> dict:
-    order = [
-        ("left",  "shoulder_flexion"),
-        ("left",  "shoulder_abduction"),
-        ("left",  "elbow_flexion"),
-        ("left",  "wrist_flexion"),
-        ("left",  "wrist_deviation"),
-        ("right", "shoulder_flexion"),
-        ("right", "shoulder_abduction"),
-        ("right", "elbow_flexion"),
-        ("right", "wrist_flexion"),
-        ("right", "wrist_deviation"),
-    ]
+def gripper_aperture(hand_landmarks: list[dict]) -> float:
+    if not hand_landmarks or len(hand_landmarks) < 21:
+        return 1.0
 
-    prev_dq_cache = prev_dq if prev_dq and len(prev_dq) == len(order) else [0.0] * len(order)
+    def dist(a, b):
+        return math.sqrt(
+            (a["x"] - b["x"]) ** 2 +
+            (a["y"] - b["y"]) ** 2 +
+            (a["z"] - b["z"]) ** 2
+        )
+
+    hand_size = dist(hand_landmarks[0], hand_landmarks[9]) or 1e-6
+    return round(min(1.0, dist(hand_landmarks[4], hand_landmarks[8]) / hand_size), 4)
+
+
+def _clamp(val: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, val))
+
+
+def to_motor_state(
+    joint_angles: dict,
+    prev_angles: dict | None,
+    dt: float,
+    prev_dq: list | None = None,
+    robot: RobotConfig | None = None,
+    hand_landmarks: list[list[dict]] | None = None,
+) -> dict:
+    if robot is None:
+        robot = ROBOTS["generic_bimanual"]
+
+    prev_dq_cache = prev_dq if prev_dq and len(prev_dq) == robot.dof else [0.0] * robot.dof
+
     q, dq, ddq = [], [], []
 
-    for i, (side, name) in enumerate(order):
-        angle = joint_angles.get(side, {}).get(name, 0.0)
-        q_rad = math.radians(angle)
-        q.append(round(q_rad, 6))
-
-        if prev_angles and dt > 0:
-            prev_angle = prev_angles.get(side, {}).get(name, angle)
-            dq_val = math.radians(angle - prev_angle) / dt
-        else:
+    for i, jm in enumerate(robot.joints):
+        if jm.human_side == "const":
+            q_rad = jm.const_val
             dq_val = 0.0
-        dq.append(round(dq_val, 6))
+        elif jm.human_side == "gripper":
+            landmarks = None
+            if hand_landmarks:
+                landmarks = hand_landmarks[0]
+            aperture = gripper_aperture(landmarks) if landmarks else 1.0
+            q_rad = aperture * (jm.max_rad - jm.min_rad) + jm.min_rad
+            dq_val = (q_rad - prev_dq_cache[i]) / dt if dt > 0 else 0.0
+        else:
+            angle = joint_angles.get(jm.human_side, {}).get(jm.human_joint, 0.0)
+            q_rad = _clamp(math.radians(angle), jm.min_rad, jm.max_rad)
+            if prev_angles and dt > 0:
+                prev_angle = prev_angles.get(jm.human_side, {}).get(jm.human_joint, angle)
+                dq_val = math.radians(angle - prev_angle) / dt
+            else:
+                dq_val = 0.0
 
         ddq_val = (dq_val - prev_dq_cache[i]) / dt if dt > 0 else 0.0
+
+        q.append(round(q_rad, 6))
+        dq.append(round(dq_val, 6))
         ddq.append(round(ddq_val, 6))
 
-    return {
-        "q":   q,
-        "dq":  dq,
-        "ddq": ddq,
-    }
+    return {"q": q, "dq": dq, "ddq": ddq}
 
 
-def build_observation_vector(motor_state: dict, prev_motor_state: dict | None, t: float, period: float = 0.8) -> list[float]:
-    q   = motor_state.get("q",   [0.0] * 10)
-    dq  = motor_state.get("dq",  [0.0] * 10)
+def build_observation_vector(
+    motor_state: dict,
+    prev_motor_state: dict | None,
+    t: float,
+    robot: RobotConfig | None = None,
+    period: float = 0.8,
+) -> list[float]:
+    if robot is None:
+        robot = ROBOTS["generic_bimanual"]
 
-    q0 = [0.0] * len(q)
+    dof = robot.dof
+    q   = motor_state.get("q",  [0.0] * dof)
+    dq  = motor_state.get("dq", [0.0] * dof)
+    q0  = [0.0] * dof
 
     prev_action = prev_motor_state.get("q", q0) if prev_motor_state else q0
 
@@ -143,10 +178,9 @@ def build_observation_vector(motor_state: dict, prev_motor_state: dict | None, t
     sin_phase = round(math.sin(2 * math.pi * phase / period), 6)
     cos_phase = round(math.cos(2 * math.pi * phase / period), 6)
 
-    obs = (
+    return (
         [round(q_i - q0_i, 6) for q_i, q0_i in zip(q, q0)]
         + [round(v, 6) for v in dq]
         + [round(v, 6) for v in prev_action]
         + [sin_phase, cos_phase]
     )
-    return obs

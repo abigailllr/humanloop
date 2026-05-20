@@ -6,8 +6,9 @@ from .vision import detect, hand_contacts
 from .gemini import validate as gemini_validate
 from .synthetic import check_metadata, check_motion_naturalness
 from .kinematics import compute_joint_angles, to_motor_state, build_observation_vector
+from ..robots.config import RobotConfig, ROBOTS, get_robot
 
-HMDF_VERSION = "1.7"
+HMDF_VERSION = "1.8"
 
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
@@ -63,7 +64,19 @@ def _stats(frames):
     return {"bimanual": bimanual, "objects_touched": list(touched), "dominant_hand": dominant}
 
 
-def extract(video_path: str, submission_id: str = "", challenge_id: str = "", challenge_title: str = "", user_id: str = "", lat: float = 0.0, lng: float = 0.0, captured_at: str = "") -> dict:
+def extract(
+    video_path: str,
+    submission_id: str = "",
+    challenge_id: str = "",
+    challenge_title: str = "",
+    user_id: str = "",
+    lat: float = 0.0,
+    lng: float = 0.0,
+    captured_at: str = "",
+    robot: str = "generic_bimanual",
+) -> dict:
+    robot_cfg: RobotConfig = get_robot(robot)
+
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     dt = 1.0 / fps if fps > 0 else 0
@@ -74,14 +87,14 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
     prev_joint_angles = None
     prev_motor = None
 
-    with mp_pose.Pose() as pose, mp_hands.Hands() as hands:
+    with mp_pose.Pose() as pose_model, mp_hands.Hands() as hands_model:
         while cap.isOpened():
             ok, frame = cap.read()
             if not ok:
                 break
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            pose_result = pose.process(rgb)
-            hands_result = hands.process(rgb)
+            pose_result = pose_model.process(rgb)
+            hands_result = hands_model.process(rgb)
 
             pose_landmarks = None
             if pose_result.pose_landmarks:
@@ -108,9 +121,16 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
             ] or None
 
             joint_angles = compute_joint_angles(pose_landmarks) if pose_landmarks else {}
-            motor = to_motor_state(joint_angles, prev_joint_angles if frame_index > 0 else None, dt, prev_motor.get("dq") if prev_motor else None)
+            motor = to_motor_state(
+                joint_angles,
+                prev_joint_angles if frame_index > 0 else None,
+                dt,
+                prev_motor.get("dq") if prev_motor else None,
+                robot_cfg,
+                hand_landmarks if robot_cfg.has_gripper else None,
+            )
             t_sec = round(frame_index / fps, 4) if fps > 0 else 0
-            obs = build_observation_vector(motor, prev_motor, t_sec)
+            obs = build_observation_vector(motor, prev_motor, t_sec, robot_cfg)
 
             entry = {
                 "t": t_sec,
@@ -157,13 +177,14 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
         or motion_check.get("suspicious") and len(motion_check.get("signals", [])) >= 2
     )
 
-    record = {
+    return {
         "hmdf_version": HMDF_VERSION,
         "source": "humanloop",
         "submission_id": submission_id,
         "challenge_id": challenge_id,
         "challenge_title": challenge_title,
         "user_id": user_id,
+        "robot": robot,
         "fps": fps,
         "frame_count": len(frames),
         "frames": frames,
@@ -185,15 +206,16 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
             "vision_model": "yolo11x",
             "joint_angles_standard": "anatomical",
             "joint_angles_unit": "degrees",
+            "robot_type": robot_cfg.robot_type,
+            "dof": robot_cfg.dof,
+            "has_gripper": robot_cfg.has_gripper,
+            "obs_dim": robot_cfg.obs_dim,
+            "action_dim": robot_cfg.action_dim,
+            "joint_names": [j.robot_joint for j in robot_cfg.joints],
         },
+        **({"location": {"lat": lat, "lng": lng}} if lat != 0.0 or lng != 0.0 else {}),
+        **({"captured_at": captured_at} if captured_at else {}),
     }
-
-    if lat != 0.0 or lng != 0.0:
-        record["location"] = {"lat": lat, "lng": lng}
-    if captured_at:
-        record["captured_at"] = captured_at
-
-    return record
 
 
 def validate(video_path: str) -> dict:

@@ -40,3 +40,16 @@ func (s *S3Store) Save(challengeID, userID string, r io.Reader) (string, error) 
 func (s *S3Store) BaseDir() string {
 	return "s3://" + s.bucket
 }
+
+func (s *S3Store) UploadHMDF(submissionID string, r io.Reader) (string, error) {
+	key := "hmdf/" + submissionID + ".hmdf.json.gz"
+	_, err := s.client.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket: &s.bucket,
+		Key:    &key,
+		Body:   r,
+	})
+	if err != nil {
+		return "", err
+	}
+	return "s3://" + s.bucket + "/" + key, nil
+}

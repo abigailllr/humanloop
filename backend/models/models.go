@@ -18,15 +18,39 @@ type Challenge struct {
 }
 
 type Submission struct {
-	ID             string  `json:"id"`
-	ChallengeID    string  `json:"challenge_id"`
-	ChallengeTitle string  `json:"challenge_title"`
-	UserID         string  `json:"user_id"`
-	VideoPath      string  `json:"video_path"`
-	Status         string  `json:"status"`
-	CreditsEarned  int     `json:"credits_earned"`
-	Latitude       float64 `json:"latitude,omitempty"`
-	Longitude      float64 `json:"longitude,omitempty"`
-	CapturedAt     string  `json:"captured_at,omitempty"`
-	CreatedAt      string  `json:"created_at"`
+	ID               string   `json:"id"`
+	ChallengeID      string   `json:"challenge_id"`
+	ChallengeTitle   string   `json:"challenge_title"`
+	UserID           string   `json:"user_id"`
+	VideoPath        string   `json:"video_path,omitempty"`
+	HmdfPath         string   `json:"hmdf_path,omitempty"`
+	Status           string   `json:"status"`
+	CreditsEarned    int      `json:"credits_earned"`
+	QualityScore     float64  `json:"quality_score,omitempty"`
+	ExtractorVersion string   `json:"extractor_version,omitempty"`
+	ConsentVersion   string   `json:"consent_version,omitempty"`
+	VideoHash        string   `json:"-"`
+	Approved         bool     `json:"approved"`
+	Tags             []string `json:"tags,omitempty"`
+	Latitude         float64  `json:"latitude,omitempty"`
+	Longitude        float64  `json:"longitude,omitempty"`
+	CapturedAt       string   `json:"captured_at,omitempty"`
+	CreatedAt        string   `json:"created_at"`
+}
+
+type Dataset struct {
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	RobotType   string  `json:"robot_type,omitempty"`
+	ChallengeID string  `json:"challenge_id,omitempty"`
+	MinQuality  float64 `json:"min_quality,omitempty"`
+	CreatedAt   string  `json:"created_at"`
+}
+
+type BuyerKey struct {
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	DatasetID string `json:"dataset_id,omitempty"`
+	CreatedAt string `json:"created_at"`
 }
