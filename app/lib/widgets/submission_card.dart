@@ -89,6 +89,10 @@ class SubmissionCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text('+${submission.creditsEarned} cr', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.success)),
               ],
+              if (submission.status == SubmissionStatus.verified && submission.qualityScore > 0) ...[
+                const SizedBox(height: 2),
+                Text('${(submission.qualityScore * 100).round()}% quality', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+              ],
             ],
           ),
         ],

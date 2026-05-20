@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +13,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	ljwt "github.com/lestrrat-go/jwx/v2/jwt"
 
@@ -37,18 +41,18 @@ func AuthGoogle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := "google:" + info.Sub
-	token, err := issueJWT(userID, info.Email, info.Name)
+	if db.Pool != nil {
+		db.UpsertUser(r.Context(), models.User{ID: userID, Email: info.Email, Name: info.Name})
+	}
+
+	resp, err := issueTokenPair(r.Context(), userID, info.Email, info.Name)
 	if err != nil {
 		http.Error(w, "could not issue token", http.StatusInternalServerError)
 		return
 	}
 
-	if db.Pool != nil {
-		db.UpsertUser(r.Context(), models.User{ID: userID, Email: info.Email, Name: info.Name})
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	json.NewEncoder(w).Encode(resp)
 }
 
 func AuthApple(w http.ResponseWriter, r *http.Request) {
@@ -87,18 +91,112 @@ func AuthApple(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := "apple:" + body.UserID
-	token, err := issueJWT(userID, email, body.Name)
+	if db.Pool != nil {
+		db.UpsertUser(r.Context(), models.User{ID: userID, Email: email, Name: body.Name})
+	}
+
+	resp, err := issueTokenPair(r.Context(), userID, email, body.Name)
 	if err != nil {
 		http.Error(w, "could not issue token", http.StatusInternalServerError)
 		return
 	}
 
-	if db.Pool != nil {
-		db.UpsertUser(r.Context(), models.User{ID: userID, Email: email, Name: body.Name})
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func AuthRefresh(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBody)
+
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RefreshToken == "" {
+		http.Error(w, "missing refresh_token", http.StatusBadRequest)
+		return
+	}
+
+	if db.Pool == nil {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	hash := hashToken(body.RefreshToken)
+	userID, tokenID, err := db.GetRefreshToken(r.Context(), hash)
+	if err != nil {
+		http.Error(w, "invalid or expired refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := db.GetUser(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "user not found", http.StatusUnauthorized)
+		return
+	}
+
+	if err := db.DeleteRefreshToken(r.Context(), tokenID); err != nil {
+		http.Error(w, "token rotation failed", http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := issueTokenPair(r.Context(), userID, user.Email, user.Name)
+	if err != nil {
+		http.Error(w, "could not issue token", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	json.NewEncoder(w).Encode(resp)
+}
+
+func AuthRevoke(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBody)
+
+	var body struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RefreshToken == "" {
+		http.Error(w, "missing refresh_token", http.StatusBadRequest)
+		return
+	}
+
+	if db.Pool != nil {
+		db.DeleteRefreshTokenByHash(r.Context(), hashToken(body.RefreshToken))
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func issueTokenPair(ctx context.Context, userID, email, name string) (map[string]any, error) {
+	accessToken, err := issueJWT(userID, email, name)
+	if err != nil {
+		return nil, err
+	}
+
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return nil, err
+	}
+	rawRefresh := hex.EncodeToString(raw)
+
+	if db.Pool != nil {
+		id := uuid.New().String()
+		if err := db.CreateRefreshToken(ctx, id, userID, hashToken(rawRefresh)); err != nil {
+			return nil, err
+		}
+	}
+
+	return map[string]any{
+		"access_token":  accessToken,
+		"refresh_token": rawRefresh,
+		"token_type":    "Bearer",
+		"expires_in":    900,
+	}, nil
+}
+
+func hashToken(raw string) string {
+	h := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(h[:])
 }
 
 type googleTokenInfo struct {
@@ -160,7 +258,7 @@ func issueJWT(sub, email, name string) (string, error) {
 		"email": email,
 		"name":  name,
 		"iat":   time.Now().Unix(),
-		"exp":   time.Now().Add(30 * 24 * time.Hour).Unix(),
+		"exp":   time.Now().Add(15 * time.Minute).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

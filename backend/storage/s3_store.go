@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -39,6 +41,21 @@ func (s *S3Store) Save(challengeID, userID string, r io.Reader) (string, error) 
 
 func (s *S3Store) BaseDir() string {
 	return "s3://" + s.bucket
+}
+
+func (s *S3Store) PresignGetHMDF(hmdfPath string, ttl time.Duration) (string, error) {
+	key := strings.TrimPrefix(hmdfPath, "s3://"+s.bucket+"/")
+	presignClient := s3.NewPresignClient(s.client)
+	req, err := presignClient.PresignGetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: &s.bucket,
+		Key:    &key,
+	}, func(o *s3.PresignOptions) {
+		o.Expires = ttl
+	})
+	if err != nil {
+		return "", err
+	}
+	return req.URL, nil
 }
 
 func (s *S3Store) UploadHMDF(submissionID string, r io.Reader) (string, error) {

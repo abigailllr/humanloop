@@ -1,3 +1,4 @@
+import math
 import cv2
 import mediapipe as mp
 from pathlib import Path
@@ -7,6 +8,49 @@ from .gemini import validate as gemini_validate
 from .synthetic import check_metadata, check_motion_naturalness
 from .kinematics import compute_joint_angles, to_motor_state, build_observation_vector
 from ..robots.config import RobotConfig, ROBOTS, get_robot
+
+_BLUR_THRESHOLD = 80.0
+_CONFIDENCE_THRESHOLD = 0.5
+_L_WRIST = 15
+_R_WRIST = 16
+_MAX_WRIST_SPEED_PER_SEC = 0.5
+
+
+def _frame_quality_flags(gray_frame, pose_landmarks):
+    blur_score = cv2.Laplacian(gray_frame, cv2.CV_64F).var()
+    motion_blur = blur_score < _BLUR_THRESHOLD
+
+    if pose_landmarks is None:
+        low_confidence = True
+    else:
+        avg_vis = sum(lm["v"] for lm in pose_landmarks) / len(pose_landmarks)
+        low_confidence = avg_vis < _CONFIDENCE_THRESHOLD
+
+    flags = {}
+    if motion_blur:
+        flags["motion_blur"] = True
+    if low_confidence:
+        flags["low_confidence"] = True
+    return flags
+
+
+def _task_completion_score(frames, fps):
+    if not frames or fps == 0:
+        return 0.0
+    total_disp = 0.0
+    for i in range(1, len(frames)):
+        prev = frames[i - 1].get("pose")
+        curr = frames[i].get("pose")
+        if not prev or not curr:
+            continue
+        for idx in (_L_WRIST, _R_WRIST):
+            if idx < len(prev) and idx < len(curr):
+                dx = curr[idx]["x"] - prev[idx]["x"]
+                dy = curr[idx]["y"] - prev[idx]["y"]
+                total_disp += math.sqrt(dx * dx + dy * dy)
+    duration = len(frames) / fps
+    normalized = total_disp / (duration + 1e-9) / _MAX_WRIST_SPEED_PER_SEC
+    return min(1.0, round(normalized, 4))
 
 HMDF_VERSION = "1.8"
 
@@ -92,6 +136,7 @@ def extract(
             ok, frame = cap.read()
             if not ok:
                 break
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pose_result = pose_model.process(rgb)
             hands_result = hands_model.process(rgb)
@@ -132,6 +177,8 @@ def extract(
             t_sec = round(frame_index / fps, 4) if fps > 0 else 0
             obs = build_observation_vector(motor, prev_motor, t_sec, robot_cfg)
 
+            quality_flags = _frame_quality_flags(gray, pose_landmarks)
+
             entry = {
                 "t": t_sec,
                 "pose": pose_landmarks,
@@ -142,6 +189,8 @@ def extract(
                 "objects": objects,
                 "contacts": contacts,
             }
+            if quality_flags:
+                entry["quality_flags"] = quality_flags
             if pose_vel:
                 entry["pose_vel"] = pose_vel
             if hand_vel:
@@ -158,6 +207,7 @@ def extract(
 
     cap.release()
 
+    task_completion = _task_completion_score(frames, fps)
     validation = gemini_validate(video_path, challenge_title)
     contact_events = _contact_events(frames, fps) if fps > 0 else []
     stats = _stats(frames)
@@ -190,6 +240,7 @@ def extract(
         "frames": frames,
         "contact_events": contact_events,
         "stats": stats,
+        "task_completion_score": task_completion,
         "validation": validation,
         "synthetic_detection": {
             "synthetic": is_synthetic,

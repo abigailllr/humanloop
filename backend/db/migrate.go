@@ -82,6 +82,30 @@ func Migrate(ctx context.Context) error {
 		CREATE INDEX IF NOT EXISTS submissions_video_hash ON submissions(video_hash) WHERE video_hash != '';
 		CREATE INDEX IF NOT EXISTS submissions_approved   ON submissions(approved)   WHERE approved = FALSE;
 		CREATE INDEX IF NOT EXISTS submissions_quality    ON submissions(quality_score);
+
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS retry_count INT     NOT NULL DEFAULT 0;
+		ALTER TABLE submissions ADD COLUMN IF NOT EXISTS dlq         BOOLEAN NOT NULL DEFAULT FALSE;
+		CREATE INDEX IF NOT EXISTS submissions_dlq ON submissions(dlq) WHERE dlq = TRUE;
+
+		CREATE TABLE IF NOT EXISTS refresh_tokens (
+			id         TEXT PRIMARY KEY,
+			user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			token_hash TEXT NOT NULL UNIQUE,
+			expires_at TIMESTAMPTZ NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS refresh_tokens_user_id    ON refresh_tokens(user_id);
+		CREATE INDEX IF NOT EXISTS refresh_tokens_expires_at ON refresh_tokens(expires_at);
+
+		CREATE TABLE IF NOT EXISTS webhooks (
+			id          TEXT PRIMARY KEY,
+			dataset_id  TEXT REFERENCES datasets(id) ON DELETE CASCADE,
+			url         TEXT NOT NULL,
+			secret_hash TEXT NOT NULL,
+			active      BOOLEAN NOT NULL DEFAULT TRUE,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS webhooks_dataset_id ON webhooks(dataset_id);
 	`)
 	return err
 }

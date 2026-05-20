@@ -29,6 +29,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
   String? _submissionId;
   Map<String, dynamic>? _result;
   Timer? _pollTimer;
+  String _selectedRobot = 'generic_bimanual';
 
   @override
   void initState() {
@@ -109,6 +110,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
       lat: lat,
       lng: lng,
       capturedAt: DateTime.now().toUtc().toIso8601String(),
+      robot: _selectedRobot,
     );
 
     if (!mounted) return;
@@ -248,10 +250,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
               ? const _ProcessingState()
               : _videoPath != null
                   ? _PreviewControls(uploading: _uploading, onSubmit: _submit, onRetake: _retake)
-                  : _RecordingControls(challenge: c, recording: _recording, initialized: _initialized, onToggle: _toggleRecord, onSwitch: _cameras.length > 1 ? _switchCamera : null),
+                  : _RecordingControls(challenge: c, recording: _recording, initialized: _initialized, onToggle: _toggleRecord, onSwitch: _cameras.length > 1 ? _switchCamera : null, selectedRobot: _selectedRobot, onRobotChanged: (r) => setState(() => _selectedRobot = r)),
     );
   }
 }
+
+const _kRobots = [
+  ('generic_bimanual', 'Bimanual'),
+  ('so100', 'SO-100'),
+  ('ur5', 'UR5'),
+  ('franka', 'Franka'),
+  ('lite6', 'Lite 6'),
+];
 
 class _RecordingControls extends StatelessWidget {
   final Challenge challenge;
@@ -259,12 +269,16 @@ class _RecordingControls extends StatelessWidget {
   final bool initialized;
   final VoidCallback onToggle;
   final VoidCallback? onSwitch;
+  final String selectedRobot;
+  final ValueChanged<String> onRobotChanged;
 
   const _RecordingControls({
     required this.challenge,
     required this.recording,
     required this.initialized,
     required this.onToggle,
+    required this.selectedRobot,
+    required this.onRobotChanged,
     this.onSwitch,
   });
 
@@ -272,6 +286,31 @@ class _RecordingControls extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        if (!recording) ...[
+          SizedBox(
+            height: 36,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: _kRobots.map((r) {
+                final selected = r.$1 == selectedRobot;
+                return GestureDetector(
+                  onTap: () => onRobotChanged(r.$1),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: selected ? AppColors.primary : Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(r.$2, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? Colors.white : Colors.white70)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(

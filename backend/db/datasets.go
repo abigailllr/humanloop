@@ -44,6 +44,14 @@ func DeleteDataset(ctx context.Context, id string) error {
 	return err
 }
 
+func UpdateDataset(ctx context.Context, d models.Dataset) error {
+	_, err := Pool.Exec(ctx, `
+		UPDATE datasets SET title = $2, description = $3, robot_type = $4, challenge_id = $5, min_quality = $6
+		WHERE id = $1
+	`, d.ID, d.Title, d.Description, d.RobotType, d.ChallengeID, d.MinQuality)
+	return err
+}
+
 func GetDatasetSubmissions(ctx context.Context, d models.Dataset) ([]models.Submission, error) {
 	args := []any{true, "done"}
 	where := "s.approved = $1 AND s.status = $2"

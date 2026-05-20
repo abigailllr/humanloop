@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,17 +117,27 @@ func (p *Pipeline) worker() {
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-		out, err := exec.CommandContext(ctx, "python3", args...).Output()
+		cmd := exec.CommandContext(ctx, "python3", args...)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		out, err := cmd.Output()
 		cancel()
 
 		record := func() map[string]any {
 			if err != nil {
+				errMsg := err.Error()
+				if s := stderr.String(); s != "" {
+					errMsg = s
+				}
 				metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
 				metrics.ActiveJobs.Dec()
 				metrics.PipelineDuration.Observe(time.Since(start).Seconds())
-				p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: err.Error()})
+				p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: errMsg})
 				if db.Pool != nil {
 					db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
+					if count, err := db.IncrementRetryCount(context.Background(), job.SubmissionID); err == nil && count >= 3 {
+						db.MarkDLQ(context.Background(), job.SubmissionID)
+					}
 				}
 				return nil
 			}
@@ -193,6 +207,8 @@ func (p *Pipeline) worker() {
 		extractorVersion, _ := record["hmdf_version"].(string)
 
 		metrics.SubmissionsTotal.WithLabelValues("done").Inc()
+		metrics.SubmissionsByRobot.WithLabelValues(robot).Inc()
+		metrics.QualityScore.Observe(qs)
 		metrics.ActiveJobs.Dec()
 		metrics.PipelineDuration.Observe(time.Since(start).Seconds())
 		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusDone})
@@ -202,6 +218,7 @@ func (p *Pipeline) worker() {
 			db.AddCredits(context.Background(), job.UserID, creditsPerSubmission)
 			db.LogCreditTransaction(context.Background(), job.UserID, job.SubmissionID, "submission", creditsPerSubmission)
 			db.IncrementChallengeSubmissions(context.Background(), job.ChallengeID)
+			go dispatchWebhooks(job.SubmissionID, job.ChallengeID, qs)
 		}
 	}
 }
@@ -239,6 +256,63 @@ func isSynthetic(record map[string]any) bool {
 	}
 	synthetic, _ := sd["synthetic"].(bool)
 	return synthetic
+}
+
+var webhookClient = &http.Client{Timeout: 10 * time.Second}
+
+func dispatchWebhooks(submissionID, challengeID string, qs float64) {
+	if db.Pool == nil {
+		return
+	}
+	datasets, err := db.GetDatasets(context.Background())
+	if err != nil {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"event":         "submission.done",
+		"submission_id": submissionID,
+		"challenge_id":  challengeID,
+		"quality_score": qs,
+		"timestamp":     time.Now().UTC().Format(time.RFC3339),
+	})
+	for _, dataset := range datasets {
+		if dataset.ChallengeID != "" && dataset.ChallengeID != challengeID {
+			continue
+		}
+		webhooks, err := db.GetActiveWebhooksForDataset(context.Background(), dataset.ID)
+		if err != nil {
+			continue
+		}
+		for _, wh := range webhooks {
+			go sendWebhook(wh.URL, wh.SecretHash, dataset.ID, payload)
+		}
+	}
+}
+
+func sendWebhook(url, secretHash, datasetID string, payload []byte) {
+	mac := hmac.New(sha256.New, []byte(secretHash))
+	mac.Write(payload)
+	sig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(5 * time.Second)
+		}
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(payload))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-HumanLoop-Signature", sig)
+		req.Header.Set("X-HumanLoop-Dataset", datasetID)
+		resp, err := webhookClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode < 500 {
+				return
+			}
+		}
+	}
 }
 
 func qualityScore(record map[string]any) float64 {

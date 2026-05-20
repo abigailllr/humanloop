@@ -54,3 +54,12 @@ type BuyerKey struct {
 	DatasetID string `json:"dataset_id,omitempty"`
 	CreatedAt string `json:"created_at"`
 }
+
+type Webhook struct {
+	ID         string `json:"id"`
+	DatasetID  string `json:"dataset_id,omitempty"`
+	URL        string `json:"url"`
+	SecretHash string `json:"-"`
+	Active     bool   `json:"active"`
+	CreatedAt  string `json:"created_at"`
+}

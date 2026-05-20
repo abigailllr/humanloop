@@ -58,6 +58,39 @@ func AdminApproveSubmission(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func AdminGetDLQ(w http.ResponseWriter, r *http.Request) {
+	if db.Pool == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]any{})
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	list, err := db.GetDLQSubmissions(r.Context(), limit, offset)
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	if list == nil {
+		list = make([]models.Submission, 0)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
+func AdminRetryDLQ(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if db.Pool == nil {
+		http.Error(w, "db unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if err := db.ResetDLQ(r.Context(), id); err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	AdminRetrySubmission(w, r)
+}
+
 func AdminRejectSubmission(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if db.Pool == nil {

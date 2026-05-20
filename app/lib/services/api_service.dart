@@ -4,6 +4,12 @@ import '../models/challenge.dart';
 import '../models/submission.dart';
 import '../models/user.dart';
 
+class AuthTokens {
+  final String accessToken;
+  final String refreshToken;
+  const AuthTokens({required this.accessToken, required this.refreshToken});
+}
+
 class ApiService {
   static const _base = String.fromEnvironment('API_URL', defaultValue: 'http://localhost:8080');
   static void Function()? onUnauthorized;
@@ -14,17 +20,18 @@ class ApiService {
     Challenge(id: 'c3', title: 'Sort & Stack', description: 'Sort 5 objects by size from smallest to largest.', submissions: 0, difficulty: 'Medium'),
   ];
 
-  static Future<String> authGoogle(String idToken) async {
+  static Future<AuthTokens> authGoogle(String idToken) async {
     final res = await http.post(
       Uri.parse('$_base/v1/auth/google'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'id_token': idToken}),
     );
     if (res.statusCode != 200) throw Exception('google auth failed');
-    return jsonDecode(res.body)['token'] as String;
+    final j = jsonDecode(res.body);
+    return AuthTokens(accessToken: j['access_token'] as String, refreshToken: j['refresh_token'] as String);
   }
 
-  static Future<String> authApple({
+  static Future<AuthTokens> authApple({
     required String identityToken,
     required String userId,
     String email = '',
@@ -36,7 +43,33 @@ class ApiService {
       body: jsonEncode({'identity_token': identityToken, 'user_id': userId, 'email': email, 'name': name}),
     );
     if (res.statusCode != 200) throw Exception('apple auth failed');
-    return jsonDecode(res.body)['token'] as String;
+    final j = jsonDecode(res.body);
+    return AuthTokens(accessToken: j['access_token'] as String, refreshToken: j['refresh_token'] as String);
+  }
+
+  static Future<AuthTokens?> refreshTokens(String refreshToken) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_base/v1/auth/refresh'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refresh_token': refreshToken}),
+      );
+      if (res.statusCode != 200) return null;
+      final j = jsonDecode(res.body);
+      return AuthTokens(accessToken: j['access_token'] as String, refreshToken: j['refresh_token'] as String);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> revokeToken(String token, String refreshToken) async {
+    try {
+      await http.post(
+        Uri.parse('$_base/v1/auth/revoke'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'refresh_token': refreshToken}),
+      );
+    } catch (_) {}
   }
 
   static Future<List<Challenge>> getChallenges() async {
@@ -57,9 +90,13 @@ class ApiService {
     double? lat,
     double? lng,
     String? capturedAt,
+    String robot = 'generic_bimanual',
+    String consentVersion = '1.0',
   }) async {
     final req = http.MultipartRequest('POST', Uri.parse('$_base/v1/submit/$challengeId'))
       ..headers['Authorization'] = 'Bearer $token'
+      ..fields['robot'] = robot
+      ..fields['consent_version'] = consentVersion
       ..files.add(await http.MultipartFile.fromPath('video', videoPath));
 
     if (lat != null) req.fields['lat'] = lat.toString();
@@ -109,10 +146,10 @@ class ApiService {
     }
   }
 
-  static Future<List<Submission>> getUserSubmissions({required String token}) async {
+  static Future<List<Submission>> getUserSubmissions({required String token, int limit = 20, int offset = 0}) async {
     try {
       final res = await http.get(
-        Uri.parse('$_base/v1/submissions'),
+        Uri.parse('$_base/v1/submissions?limit=$limit&offset=$offset'),
         headers: {'Authorization': 'Bearer $token'},
       ).timeout(const Duration(seconds: 10));
       if (res.statusCode == 401) { onUnauthorized?.call(); return []; }
@@ -121,6 +158,35 @@ class ApiService {
       return data.map((j) => Submission.fromJson(j)).toList();
     } catch (_) {
       return [];
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getCreditHistory({required String token, int limit = 20, int offset = 0}) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_base/v1/credits/history?limit=$limit&offset=$offset'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 401) { onUnauthorized?.call(); return []; }
+      if (res.statusCode != 200) return [];
+      final List data = jsonDecode(res.body);
+      return data.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> getUserStats({required String token}) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_base/v1/profile/stats'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 401) { onUnauthorized?.call(); return {}; }
+      if (res.statusCode != 200) return {};
+      return jsonDecode(res.body);
+    } catch (_) {
+      return {};
     }
   }
 }
