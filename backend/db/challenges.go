@@ -6,6 +6,7 @@ import (
 	"github.com/abigailtech/humanloop/backend/models"
 )
 
+
 var DefaultChallenges = []models.Challenge{
 	{ID: "c1", Title: "Pick & Place", Description: "Pick up any object from a table and place it into a box.", Difficulty: "Easy"},
 	{ID: "c2", Title: "Fold It", Description: "Fold a piece of cloth or paper in half.", Difficulty: "Easy"},
@@ -67,4 +68,71 @@ func UpdateChallenge(ctx context.Context, c models.Challenge) error {
 func DeleteChallenge(ctx context.Context, id string) error {
 	_, err := Pool.Exec(ctx, `DELETE FROM challenges WHERE id=$1`, id)
 	return err
+}
+
+func GetChallengeStats(ctx context.Context, challengeID string) (map[string]any, error) {
+	var total, approved, synthetic int
+	var avgQ, maxQ float64
+	err := Pool.QueryRow(ctx, `
+		SELECT COUNT(*), COUNT(*) FILTER (WHERE approved AND status='done'),
+		       COUNT(*) FILTER (WHERE synthetic),
+		       COALESCE(AVG(quality_score) FILTER (WHERE status='done'), 0),
+		       COALESCE(MAX(quality_score), 0)
+		FROM submissions WHERE challenge_id = $1
+	`, challengeID).Scan(&total, &approved, &synthetic, &avgQ, &maxQ)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := Pool.Query(ctx, `
+		SELECT robot, COUNT(*) FROM submissions WHERE challenge_id = $1 AND status = 'done' GROUP BY robot ORDER BY COUNT(*) DESC
+	`, challengeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	robots := map[string]int{}
+	for rows.Next() {
+		var r string
+		var c int
+		if rows.Scan(&r, &c) == nil {
+			robots[r] = c
+		}
+	}
+
+	return map[string]any{
+		"challenge_id":        challengeID,
+		"total_submissions":   total,
+		"approved_done":       approved,
+		"synthetic_rejected":  synthetic,
+		"quality_avg":         avgQ,
+		"quality_max":         maxQ,
+		"submissions_by_robot": robots,
+	}, nil
+}
+
+func GetChallengeLeaderboard(ctx context.Context, challengeID string, limit int) ([]models.User, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	rows, err := Pool.Query(ctx, `
+		SELECT u.id, u.name, COUNT(s.id) as sub_count, COALESCE(SUM(s.credits_earned), 0) as earned
+		FROM submissions s
+		JOIN users u ON u.id = s.user_id
+		WHERE s.challenge_id = $1 AND s.status = 'done'
+		GROUP BY u.id, u.name ORDER BY earned DESC, sub_count DESC LIMIT $2
+	`, challengeID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []models.User
+	for rows.Next() {
+		var u models.User
+		if err := rows.Scan(&u.ID, &u.Name, &u.Submissions, &u.Credits); err != nil {
+			continue
+		}
+		list = append(list, u)
+	}
+	return list, nil
 }

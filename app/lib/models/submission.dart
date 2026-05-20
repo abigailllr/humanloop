@@ -5,6 +5,7 @@ class Submission {
   final DateTime submittedAt;
   final SubmissionStatus status;
   final int creditsEarned;
+  final double qualityScore;
 
   const Submission({
     required this.id,
@@ -13,6 +14,7 @@ class Submission {
     required this.submittedAt,
     this.status = SubmissionStatus.pending,
     this.creditsEarned = 0,
+    this.qualityScore = 0,
   });
 
   factory Submission.fromJson(Map<String, dynamic> j) => Submission(
@@ -22,6 +24,7 @@ class Submission {
         submittedAt: DateTime.parse((j['submitted_at'] ?? j['created_at']) as String),
         status: _parseStatus(j['status'] as String? ?? 'pending'),
         creditsEarned: j['credits_earned'] as int? ?? 0,
+        qualityScore: (j['quality_score'] as num?)?.toDouble() ?? 0,
       );
 
   static SubmissionStatus _parseStatus(String s) {

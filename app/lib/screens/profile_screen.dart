@@ -16,12 +16,16 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   late Future<List<Submission>> _submissions;
+  late Future<Map<String, dynamic>> _stats;
+  late Future<List<Map<String, dynamic>>> _creditHistory;
 
   @override
   void initState() {
     super.initState();
     final token = ref.read(authProvider).token ?? '';
     _submissions = ApiService.getUserSubmissions(token: token);
+    _stats = ApiService.getUserStats(token: token);
+    _creditHistory = ApiService.getCreditHistory(token: token);
   }
 
   @override
@@ -53,7 +57,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       const SizedBox(height: 20),
                       _BalanceCard(credits: credits),
                       const SizedBox(height: 20),
-                      _ActivityCard(submissions: submissions, verified: verified),
+                      FutureBuilder<Map<String, dynamic>>(
+                        future: _stats,
+                        builder: (_, ss) {
+                          final qualityAvg = (ss.data?['quality_avg'] as num?)?.toDouble() ?? 0.0;
+                          return _ActivityCard(submissions: submissions, verified: verified, qualityAvg: qualityAvg);
+                        },
+                      ),
                       const SizedBox(height: 28),
                       SizedBox(
                         width: double.infinity,
@@ -114,10 +124,81 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                 ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
+                sliver: SliverToBoxAdapter(
+                  child: FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _creditHistory,
+                    builder: (_, hs) {
+                      final history = hs.data ?? [];
+                      if (hs.connectionState == ConnectionState.waiting || history.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Credit History', style: AppTextStyles.sectionTitle),
+                          const SizedBox(height: 16),
+                          ...history.map((e) => _CreditHistoryRow(entry: e)),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
               const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _CreditHistoryRow extends StatelessWidget {
+  final Map<String, dynamic> entry;
+  const _CreditHistoryRow({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = entry['amount'] as int? ?? 0;
+    final reason = entry['reason'] as String? ?? '';
+    final createdAt = entry['created_at'] as String? ?? '';
+    final positive = amount > 0;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: positive ? AppColors.successLight : AppColors.dangerLight,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(positive ? Icons.add_rounded : Icons.remove_rounded, size: 18, color: positive ? AppColors.success : AppColors.danger),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(reason, style: AppTextStyles.bodyMedium),
+                if (createdAt.isNotEmpty) Text(createdAt.substring(0, 10), style: AppTextStyles.caption),
+              ],
+            ),
+          ),
+          Text(
+            '${positive ? '+' : ''}$amount cr',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: positive ? AppColors.success : AppColors.danger),
+          ),
+        ],
       ),
     );
   }
@@ -198,7 +279,8 @@ class _BalanceCard extends StatelessWidget {
 class _ActivityCard extends StatelessWidget {
   final int submissions;
   final int verified;
-  const _ActivityCard({required this.submissions, required this.verified});
+  final double qualityAvg;
+  const _ActivityCard({required this.submissions, required this.verified, required this.qualityAvg});
 
   @override
   Widget build(BuildContext context) {
@@ -221,7 +303,7 @@ class _ActivityCard extends StatelessWidget {
           const SizedBox(height: 14),
           _ActivityRow(icon: Icons.check_circle_outline, label: 'Verified', value: '$verified'),
           const SizedBox(height: 14),
-          _ActivityRow(icon: Icons.bolt_outlined, label: 'Challenges Done', value: '$submissions'),
+          _ActivityRow(icon: Icons.star_outline_rounded, label: 'Avg Quality', value: qualityAvg > 0 ? '${(qualityAvg * 100).round()}%' : '—'),
         ],
       ),
     );

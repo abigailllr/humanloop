@@ -41,3 +41,8 @@ func (c *Client) Pop(ctx context.Context) ([]byte, error) {
 func (c *Client) Ping(ctx context.Context) error {
 	return c.rdb.Ping(ctx).Err()
 }
+
+func (c *Client) Depth(ctx context.Context) int64 {
+	n, _ := c.rdb.LLen(ctx, jobsKey).Result()
+	return n
+}

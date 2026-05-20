@@ -7,16 +7,18 @@ import '../services/auth_service.dart';
 class AuthState {
   final AppUser? user;
   final String? token;
+  final String? refreshToken;
   final bool loading;
 
-  const AuthState({this.user, this.token, this.loading = false});
+  const AuthState({this.user, this.token, this.refreshToken, this.loading = false});
 
   bool get isSignedIn => user != null;
 
-  AuthState copyWith({AppUser? user, String? token, bool? loading}) {
+  AuthState copyWith({AppUser? user, String? token, String? refreshToken, bool? loading}) {
     return AuthState(
       user: user ?? this.user,
       token: token ?? this.token,
+      refreshToken: refreshToken ?? this.refreshToken,
       loading: loading ?? this.loading,
     );
   }
@@ -25,23 +27,40 @@ class AuthState {
 class AuthNotifier extends Notifier<AuthState> {
   @override
   AuthState build() {
-    final stored = ref.read(prefsProvider).getString('auth_token');
-    if (stored != null) {
-      Future.microtask(() => _restoreFromToken(stored));
-      return AuthState(token: stored);
+    final prefs = ref.read(prefsProvider);
+    final accessToken = prefs.getString('auth_token');
+    final storedRefresh = prefs.getString('refresh_token');
+    if (accessToken != null) {
+      Future.microtask(() => _restoreFromToken(accessToken, storedRefresh));
+      return AuthState(token: accessToken, refreshToken: storedRefresh);
     }
     return const AuthState();
   }
 
-  Future<void> _restoreFromToken(String token) async {
+  Future<void> _restoreFromToken(String token, String? refreshToken) async {
     try {
       final profile = await ApiService.getProfile(token: token);
       if (profile.isNotEmpty) {
-        state = AuthState(user: AppUser.fromJson(profile), token: token);
+        state = AuthState(user: AppUser.fromJson(profile), token: token, refreshToken: refreshToken);
         return;
       }
     } catch (_) {}
-    ref.read(prefsProvider).remove('auth_token');
+    if (refreshToken != null) {
+      final tokens = await ApiService.refreshTokens(refreshToken);
+      if (tokens != null) {
+        final profile = await ApiService.getProfile(token: tokens.accessToken);
+        if (profile.isNotEmpty) {
+          final prefs = ref.read(prefsProvider);
+          await prefs.setString('auth_token', tokens.accessToken);
+          await prefs.setString('refresh_token', tokens.refreshToken);
+          state = AuthState(user: AppUser.fromJson(profile), token: tokens.accessToken, refreshToken: tokens.refreshToken);
+          return;
+        }
+      }
+    }
+    final prefs = ref.read(prefsProvider);
+    await prefs.remove('auth_token');
+    await prefs.remove('refresh_token');
     state = const AuthState();
   }
 
@@ -49,8 +68,10 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(loading: true);
     try {
       final result = await AuthService.signInWithGoogle();
-      ref.read(prefsProvider).setString('auth_token', result.token);
-      state = AuthState(user: result.user, token: result.token);
+      final prefs = ref.read(prefsProvider);
+      await prefs.setString('auth_token', result.tokens.accessToken);
+      await prefs.setString('refresh_token', result.tokens.refreshToken);
+      state = AuthState(user: result.user, token: result.tokens.accessToken, refreshToken: result.tokens.refreshToken);
     } catch (e) {
       state = state.copyWith(loading: false);
       rethrow;
@@ -61,8 +82,10 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(loading: true);
     try {
       final result = await AuthService.signInWithApple();
-      ref.read(prefsProvider).setString('auth_token', result.token);
-      state = AuthState(user: result.user, token: result.token);
+      final prefs = ref.read(prefsProvider);
+      await prefs.setString('auth_token', result.tokens.accessToken);
+      await prefs.setString('refresh_token', result.tokens.refreshToken);
+      state = AuthState(user: result.user, token: result.tokens.accessToken, refreshToken: result.tokens.refreshToken);
     } catch (e) {
       state = state.copyWith(loading: false);
       rethrow;
@@ -71,12 +94,19 @@ class AuthNotifier extends Notifier<AuthState> {
 
   void devBypass() {
     const mockUser = AppUser(id: 'dev', email: 'dev@humanloop.ai', name: 'Dev User', credits: 0, submissions: 0);
-    state = AuthState(user: mockUser, token: 'dev-token');
+    state = const AuthState(user: mockUser, token: 'dev-token');
   }
 
   Future<void> signOut() async {
+    final token = state.token;
+    final refresh = state.refreshToken;
     await AuthService.signOut();
-    ref.read(prefsProvider).remove('auth_token');
+    if (token != null && refresh != null) {
+      await ApiService.revokeToken(token, refresh);
+    }
+    final prefs = ref.read(prefsProvider);
+    await prefs.remove('auth_token');
+    await prefs.remove('refresh_token');
     state = const AuthState();
   }
 }

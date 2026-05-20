@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"net/http"
 	"os"
 	"strings"
@@ -15,6 +17,7 @@ type contextKey string
 const UserIDKey contextKey = "user_id"
 const UserEmailKey contextKey = "user_email"
 const UserNameKey contextKey = "user_name"
+const BuyerDatasetKey contextKey = "buyer_dataset_id"
 
 func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +57,33 @@ func Auth(next http.Handler) http.Handler {
 
 func APIKey(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Header.Get("X-API-Key")
+		expected := os.Getenv("API_KEY")
+		if expected == "" || subtle.ConstantTimeCompare([]byte(key), []byte(expected)) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type BuyerKeyLookup func(ctx context.Context, hash string) (datasetID string, ok bool)
+
+var BuyerKeyFunc BuyerKeyLookup
+
+func BuyerKeyOrAPIKey(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if raw := r.Header.Get("X-Buyer-Key"); raw != "" && BuyerKeyFunc != nil {
+			h := sha256.Sum256([]byte(raw))
+			hash := hex.EncodeToString(h[:])
+			if datasetID, ok := BuyerKeyFunc(r.Context(), hash); ok {
+				ctx := context.WithValue(r.Context(), BuyerDatasetKey, datasetID)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		key := r.Header.Get("X-API-Key")
 		expected := os.Getenv("API_KEY")
 		if expected == "" || subtle.ConstantTimeCompare([]byte(key), []byte(expected)) != 1 {

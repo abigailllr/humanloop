@@ -6,134 +6,91 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/abigailtech/humanloop/backend/db"
 )
 
 func ExportData(w http.ResponseWriter, r *http.Request) {
-	dir := os.Getenv("DATA_DIR")
-	if dir == "" {
-		dir = "./data/extracted"
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]any{})
-		return
-	}
-
-	challengeFilter := r.URL.Query().Get("challenge_id")
-	difficultyFilter := strings.ToLower(r.URL.Query().Get("difficulty"))
-	minConf, _ := strconv.ParseFloat(r.URL.Query().Get("min_confidence"), 64)
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	format := r.URL.Query().Get("format")
+	q := r.URL.Query()
+	challengeFilter := q.Get("challenge_id")
+	robotFilter := q.Get("robot")
+	minQuality, _ := strconv.ParseFloat(q.Get("min_quality"), 64)
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	format := q.Get("format")
 
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
 
-	var records []map[string]any
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) != ".gz" {
+	approved := true
+	submissions, err := db.GetAdminSubmissions(r.Context(), "done", robotFilter, &approved, limit, offset)
+	if err != nil || db.Pool == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]any{})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+
+	for _, s := range submissions {
+		if challengeFilter != "" && s.ChallengeID != challengeFilter {
 			continue
 		}
-		record, err := readHMDF(filepath.Join(dir, e.Name()))
+		if minQuality > 0 && s.QualityScore < minQuality {
+			continue
+		}
+		if s.HmdfPath == "" {
+			continue
+		}
+		record, err := readHMDF(s.HmdfPath)
 		if err != nil {
 			continue
 		}
-		if challengeFilter != "" && record["challenge_id"] != challengeFilter {
-			continue
+		var line []byte
+		if format == "lerobot" {
+			line, _ = json.Marshal(lerobotRow(record))
+		} else {
+			line, _ = json.Marshal(record)
 		}
-		if difficultyFilter != "" {
-			if diff, ok := record["difficulty"].(string); !ok || strings.ToLower(diff) != difficultyFilter {
-				continue
-			}
-		}
-		if minConf > 0 {
-			if val, ok := record["validation"].(map[string]any); ok {
-				conf, _ := val["confidence"].(float64)
-				if conf < minConf {
-					continue
-				}
-			}
-		}
-		records = append(records, record)
-	}
-
-	if offset >= len(records) {
-		records = nil
-	} else {
-		records = records[offset:]
-		if len(records) > limit {
-			records = records[:limit]
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	switch format {
-	case "ndjson":
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		w.Header().Set("Content-Disposition", "attachment; filename=\"humanloop-export.ndjson\"")
-		for _, rec := range records {
-			line, _ := json.Marshal(rec)
-			w.Write(line)
-			w.Write([]byte("\n"))
-		}
-	case "lerobot":
-		w.Header().Set("Content-Disposition", "attachment; filename=\"humanloop-lerobot.ndjson\"")
-		for _, rec := range records {
-			row := lerobotRow(rec)
-			line, _ := json.Marshal(row)
-			w.Write(line)
-			w.Write([]byte("\n"))
-		}
-	default:
-		json.NewEncoder(w).Encode(records)
+		w.Write(line)
+		w.Write([]byte("\n"))
 	}
 }
 
 func ExportStats(w http.ResponseWriter, r *http.Request) {
-	dir := os.Getenv("DATA_DIR")
-	if dir == "" {
-		dir = "./data/extracted"
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if db.Pool == nil {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"total": 0})
+		json.NewEncoder(w).Encode(map[string]any{"total_episodes": 0})
 		return
 	}
-
-	total := 0
-	totalFrames := 0
-	byChallengeID := map[string]int{}
-
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) != ".gz" {
-			continue
-		}
-		record, err := readHMDF(filepath.Join(dir, e.Name()))
-		if err != nil {
-			continue
-		}
-		total++
-		if frames, ok := record["frames"].([]any); ok {
-			totalFrames += len(frames)
-		}
-		if cid, ok := record["challenge_id"].(string); ok && cid != "" {
-			byChallengeID[cid]++
-		}
+	approved := true
+	submissions, err := db.GetAdminSubmissions(r.Context(), "done", "", &approved, 10000, 0)
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
 	}
-
+	total := len(submissions)
+	byChallengeID := map[string]int{}
+	byRobot := map[string]int{}
+	var qualitySum float64
+	for _, s := range submissions {
+		byChallengeID[s.ChallengeID]++
+		qualitySum += s.QualityScore
+	}
+	avgQ := 0.0
+	if total > 0 {
+		avgQ = qualitySum / float64(total)
+	}
+	for _, s := range submissions {
+		byRobot[s.ExtractorVersion]++
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"total_episodes":  total,
-		"total_frames":    totalFrames,
+		"quality_avg":     avgQ,
 		"by_challenge_id": byChallengeID,
 	})
 }
@@ -179,23 +136,23 @@ func lerobotRow(record map[string]any) map[string]any {
 }
 
 func readHMDF(path string) (map[string]any, error) {
+	if strings.HasPrefix(path, "s3://") {
+		return nil, nil
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return nil, err
 	}
 	defer gz.Close()
-
 	b, err := io.ReadAll(gz)
 	if err != nil {
 		return nil, err
 	}
-
 	var record map[string]any
 	if err := json.Unmarshal(b, &record); err != nil {
 		return nil, err

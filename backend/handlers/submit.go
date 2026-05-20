@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -28,6 +31,13 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 
 	challengeID := r.PathValue("challengeId")
 	userID := r.Context().Value(middleware.UserIDKey).(string)
+
+	if db.Pool != nil {
+		if count, err := db.CountSubmissionsToday(r.Context(), userID); err == nil && count >= 20 {
+			http.Error(w, "daily submission limit reached", http.StatusTooManyRequests)
+			return
+		}
+	}
 
 	if err := r.ParseMultipartForm(32 * 1024 * 1024); err != nil {
 		http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
@@ -61,6 +71,24 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, io.LimitReader(file, 4*1024*1024)); err != nil {
+		http.Error(w, "unreadable file", http.StatusBadRequest)
+		return
+	}
+	videoHash := hex.EncodeToString(hasher.Sum(nil))
+	if _, err := file.Seek(0, 0); err != nil {
+		http.Error(w, "unreadable file", http.StatusBadRequest)
+		return
+	}
+
+	if db.Pool != nil {
+		if exists, err := db.VideoHashExists(r.Context(), videoHash); err == nil && exists {
+			http.Error(w, "duplicate submission", http.StatusConflict)
+			return
+		}
+	}
+
 	path, err := Store.Save(challengeID, userID, file)
 	if err != nil {
 		http.Error(w, "storage error", http.StatusInternalServerError)
@@ -75,18 +103,28 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	} else if _, err := time.Parse(time.RFC3339, capturedAt); err != nil {
 		capturedAt = time.Now().UTC().Format(time.RFC3339)
 	}
+	robot := r.FormValue("robot")
+	if robot == "" {
+		robot = "generic_bimanual"
+	}
+	consentVersion := r.FormValue("consent_version")
+	if consentVersion == "" {
+		consentVersion = "1.0"
+	}
 
 	title := challengeTitle(challengeID)
 
 	submission := models.Submission{
-		ID:          uuid.New().String(),
-		ChallengeID: challengeID,
-		UserID:      userID,
-		VideoPath:   path,
-		Latitude:    lat,
-		Longitude:   lng,
-		CapturedAt:  capturedAt,
-		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
+		ID:             uuid.New().String(),
+		ChallengeID:    challengeID,
+		UserID:         userID,
+		VideoPath:      path,
+		Latitude:       lat,
+		Longitude:      lng,
+		CapturedAt:     capturedAt,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+		ConsentVersion: consentVersion,
+		VideoHash:      videoHash,
 	}
 
 	job := pipeline.Job{
@@ -98,6 +136,9 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 		Latitude:       lat,
 		Longitude:      lng,
 		CapturedAt:     capturedAt,
+		Robot:          robot,
+		VideoHash:      videoHash,
+		ConsentVersion: consentVersion,
 	}
 
 	if db.Pool != nil {
