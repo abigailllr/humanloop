@@ -1,6 +1,5 @@
 import gzip
 import json
-import sys
 from pathlib import Path
 
 
@@ -149,16 +148,3 @@ def export(hmdf_paths: list[str], out_dir: str, task_description: str = "") -> N
     with open(meta_dir / "tasks.jsonl", "w") as f:
         for t in tasks:
             f.write(json.dumps(t) + "\n")
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("usage: lerobot_export.py <out_dir> [task_description] <hmdf_file> [hmdf_file ...]")
-        sys.exit(1)
-
-    out_dir = sys.argv[1]
-    task_desc = sys.argv[2] if len(sys.argv) > 3 else ""
-    paths = sys.argv[3:] if len(sys.argv) > 3 else [sys.argv[2]]
-
-    export(paths, out_dir, task_desc)
-    print(f"exported {len(paths)} episodes to {out_dir}")

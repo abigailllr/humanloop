@@ -1,14 +1,13 @@
 import gzip
 import json
-import sys
-import os
+from pathlib import Path
+
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-from pathlib import Path
 
 
-def flatten_frame(frame: dict, submission_id: str, challenge_id: str, user_id: str) -> list[dict]:
+def _flatten_frame(frame: dict, submission_id: str, challenge_id: str, user_id: str) -> list[dict]:
     rows = []
     t = frame.get("t", 0)
     pose = frame.get("pose") or []
@@ -46,7 +45,7 @@ def flatten_frame(frame: dict, submission_id: str, challenge_id: str, user_id: s
     return rows
 
 
-def convert(input_dir: str, output_path: str):
+def convert(input_dir: str, output_path: str) -> None:
     rows = []
     for path in Path(input_dir).glob("*.hmdf.json.gz"):
         with gzip.open(path, "rt") as f:
@@ -57,20 +56,11 @@ def convert(input_dir: str, output_path: str):
         u_id = record.get("user_id", "")
 
         for frame in record.get("frames", []):
-            rows.extend(flatten_frame(frame, sub_id, ch_id, u_id))
+            rows.extend(_flatten_frame(frame, sub_id, ch_id, u_id))
 
     if not rows:
-        print("no data found")
         return
 
     df = pd.DataFrame(rows)
     table = pa.Table.from_pandas(df)
     pq.write_table(table, output_path, compression="snappy")
-    print(f"exported {len(rows)} rows to {output_path}")
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("usage: export.py <extracted_dir> <output.parquet>")
-        sys.exit(1)
-    convert(sys.argv[1], sys.argv[2])

@@ -1,14 +1,11 @@
 import gzip
 import json
-import math
 import os
 import pickle
-import sys
 import tempfile
 from pathlib import Path
 
 import neat
-
 
 OBS_DIM = 32
 ACTION_DIM = 10
@@ -132,20 +129,12 @@ def _evaluate(genomes, config, dataset):
         genome.fitness = -(total_mse / max(len(sample), 1))
 
 
-def train(data_dir: str, out_path: str, generations: int = 50, challenge_id: str = "") -> None:
-    dataset = _load_dataset(data_dir, challenge_id)
-    if not dataset:
-        print("no valid training data found")
-        sys.exit(1)
-
-    print(f"loaded {len(dataset)} (obs, action) pairs from {data_dir}")
-
+def _make_config() -> neat.Config:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".cfg", delete=False) as tmp:
         tmp.write(_NEAT_CONFIG)
         cfg_path = tmp.name
-
     try:
-        config = neat.Config(
+        return neat.Config(
             neat.DefaultGenome,
             neat.DefaultReproduction,
             neat.DefaultSpeciesSet,
@@ -155,6 +144,13 @@ def train(data_dir: str, out_path: str, generations: int = 50, challenge_id: str
     finally:
         os.unlink(cfg_path)
 
+
+def train(data_dir: str, out_path: str, generations: int = 50, challenge_id: str = "") -> None:
+    dataset = _load_dataset(data_dir, challenge_id)
+    if not dataset:
+        raise ValueError("no valid training data found")
+
+    config = _make_config()
     pop = neat.Population(config)
     pop.add_reporter(neat.StdOutReporter(True))
     pop.add_reporter(neat.StatisticsReporter())
@@ -164,50 +160,10 @@ def train(data_dir: str, out_path: str, generations: int = 50, challenge_id: str
     with open(out_path, "wb") as f:
         pickle.dump(winner, f)
 
-    print(f"best genome fitness: {winner.fitness:.6f}")
-    print(f"saved to {out_path}")
-
 
 def run(genome_path: str, obs: list[float]) -> list[float]:
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".cfg", delete=False) as tmp:
-        tmp.write(_NEAT_CONFIG)
-        cfg_path = tmp.name
-
-    try:
-        config = neat.Config(
-            neat.DefaultGenome,
-            neat.DefaultReproduction,
-            neat.DefaultSpeciesSet,
-            neat.DefaultStagnation,
-            cfg_path,
-        )
-    finally:
-        os.unlink(cfg_path)
-
+    config = _make_config()
     with open(genome_path, "rb") as f:
         genome = pickle.load(f)
-
     net = neat.nn.FeedForwardNetwork.create(genome, config)
     return list(net.activate(obs))
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("usage: neat_train.py train <data_dir> <out_genome.pkl> [generations] [challenge_id]")
-        print("       neat_train.py run   <genome.pkl> <obs_json>")
-        sys.exit(1)
-
-    cmd = sys.argv[1]
-
-    if cmd == "train":
-        d_dir = sys.argv[2]
-        o_path = sys.argv[3]
-        gens = int(sys.argv[4]) if len(sys.argv) > 4 else 50
-        ch_id = sys.argv[5] if len(sys.argv) > 5 else ""
-        train(d_dir, o_path, gens, ch_id)
-
-    elif cmd == "run":
-        g_path = sys.argv[2]
-        obs_input = json.loads(sys.argv[3])
-        result = run(g_path, obs_input)
-        print(json.dumps(result))

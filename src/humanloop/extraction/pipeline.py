@@ -1,12 +1,11 @@
 import cv2
 import mediapipe as mp
-import json
-import sys
 from pathlib import Path
-from vision import detect, hand_contacts
-from gemini import validate as gemini_validate
-from synthetic import check_metadata, check_motion_naturalness
-from kinematics import compute_joint_angles, to_motor_state, build_observation_vector
+
+from .vision import detect, hand_contacts
+from .gemini import validate as gemini_validate
+from .synthetic import check_metadata, check_motion_naturalness
+from .kinematics import compute_joint_angles, to_motor_state, build_observation_vector
 
 HMDF_VERSION = "1.7"
 
@@ -109,7 +108,7 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
             ] or None
 
             joint_angles = compute_joint_angles(pose_landmarks) if pose_landmarks else {}
-            motor = to_motor_state(joint_angles, prev_joint_angles if frame_index > 0 else None, dt)
+            motor = to_motor_state(joint_angles, prev_joint_angles if frame_index > 0 else None, dt, prev_motor.get("dq") if prev_motor else None)
             t_sec = round(frame_index / fps, 4) if fps > 0 else 0
             obs = build_observation_vector(motor, prev_motor, t_sec)
 
@@ -158,14 +157,6 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
         or motion_check.get("suspicious") and len(motion_check.get("signals", [])) >= 2
     )
 
-    synthetic_detection = {
-        "synthetic": is_synthetic,
-        "signals": all_signals,
-        "gemini_confidence": gemini_synthetic_confidence,
-        "metadata": meta_check,
-        "motion": motion_check,
-    }
-
     record = {
         "hmdf_version": HMDF_VERSION,
         "source": "humanloop",
@@ -179,7 +170,13 @@ def extract(video_path: str, submission_id: str = "", challenge_id: str = "", ch
         "contact_events": contact_events,
         "stats": stats,
         "validation": validation,
-        "synthetic_detection": synthetic_detection,
+        "synthetic_detection": {
+            "synthetic": is_synthetic,
+            "signals": all_signals,
+            "gemini_confidence": gemini_synthetic_confidence,
+            "metadata": meta_check,
+            "motion": motion_check,
+        },
         "metadata": {
             "task_type": "manipulation",
             "coordinate_space": "normalized",
@@ -218,24 +215,3 @@ def validate(video_path: str) -> dict:
         issues.append("too_long")
 
     return {"valid": len(issues) == 0, "issues": issues, "duration": duration}
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("usage: main.py <validate|extract> <video_path> [submission_id] [challenge_id] [challenge_title] [user_id] [lat] [lng] [captured_at]")
-        sys.exit(1)
-
-    command = sys.argv[1]
-    video = sys.argv[2]
-
-    if command == "validate":
-        print(json.dumps(validate(video)))
-    elif command == "extract":
-        sub_id = sys.argv[3] if len(sys.argv) > 3 else ""
-        ch_id = sys.argv[4] if len(sys.argv) > 4 else ""
-        ch_title = sys.argv[5] if len(sys.argv) > 5 else ""
-        u_id = sys.argv[6] if len(sys.argv) > 6 else ""
-        lat = float(sys.argv[7]) if len(sys.argv) > 7 else 0.0
-        lng = float(sys.argv[8]) if len(sys.argv) > 8 else 0.0
-        captured_at = sys.argv[9] if len(sys.argv) > 9 else ""
-        print(json.dumps(extract(video, sub_id, ch_id, ch_title, u_id, lat, lng, captured_at)))

@@ -72,6 +72,8 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	capturedAt := r.FormValue("captured_at")
 	if capturedAt == "" {
 		capturedAt = time.Now().UTC().Format(time.RFC3339)
+	} else if _, err := time.Parse(time.RFC3339, capturedAt); err != nil {
+		capturedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 
 	title := challengeTitle(challengeID)
@@ -131,7 +133,7 @@ func challengeTitle(id string) string {
 			}
 		}
 	}
-	for _, c := range fallbackChallenges {
+	for _, c := range db.DefaultChallenges {
 		if c.ID == id {
 			return c.Title
 		}

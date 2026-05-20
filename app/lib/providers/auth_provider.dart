@@ -47,16 +47,31 @@ class AuthNotifier extends Notifier<AuthState> {
 
   Future<void> signInWithGoogle() async {
     state = state.copyWith(loading: true);
-    final result = await AuthService.signInWithGoogle();
-    ref.read(prefsProvider).setString('auth_token', result.token);
-    state = AuthState(user: result.user, token: result.token);
+    try {
+      final result = await AuthService.signInWithGoogle();
+      ref.read(prefsProvider).setString('auth_token', result.token);
+      state = AuthState(user: result.user, token: result.token);
+    } catch (e) {
+      state = state.copyWith(loading: false);
+      rethrow;
+    }
   }
 
   Future<void> signInWithApple() async {
     state = state.copyWith(loading: true);
-    final result = await AuthService.signInWithApple();
-    ref.read(prefsProvider).setString('auth_token', result.token);
-    state = AuthState(user: result.user, token: result.token);
+    try {
+      final result = await AuthService.signInWithApple();
+      ref.read(prefsProvider).setString('auth_token', result.token);
+      state = AuthState(user: result.user, token: result.token);
+    } catch (e) {
+      state = state.copyWith(loading: false);
+      rethrow;
+    }
+  }
+
+  void devBypass() {
+    const mockUser = AppUser(id: 'dev', email: 'dev@humanloop.ai', name: 'Dev User', credits: 0, submissions: 0);
+    state = AuthState(user: mockUser, token: 'dev-token');
   }
 
   Future<void> signOut() async {

@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/colors.dart';
 import '../theme/text_styles.dart';
 import '../providers/auth_provider.dart';
+import '../models/user.dart';
 import '../main.dart';
 
 class LoginScreen extends ConsumerWidget {
@@ -80,6 +82,20 @@ class LoginScreen extends ConsumerWidget {
                 style: AppTextStyles.caption.copyWith(height: 1.5),
                 textAlign: TextAlign.center,
               ),
+              if (kDebugMode) ...[
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () {
+                    ref.read(authProvider.notifier).devBypass();
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (_) => const RootNav()),
+                      (_) => false,
+                    );
+                  },
+                  child: Text('Dev bypass', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                ),
+              ],
               const SizedBox(height: 24),
             ],
           ),

@@ -6,10 +6,10 @@ import 'theme/colors.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/feed_screen.dart';
-import 'screens/camera_screen.dart';
 import 'screens/leaderboard_screen.dart';
-import 'screens/history_screen.dart';
 import 'screens/profile_screen.dart';
+import 'providers/auth_provider.dart';
+import 'services/api_service.dart';
 
 late SharedPreferences prefs;
 
@@ -22,19 +22,23 @@ Future<void> main() async {
     statusBarIconBrightness: Brightness.dark,
   ));
   prefs = await SharedPreferences.getInstance();
-  runApp(const ProviderScope(child: HumanLoopApp()));
+  final container = ProviderContainer(overrides: [
+    prefsProvider.overrideWithValue(prefs),
+  ]);
+  ApiService.onUnauthorized = () => container.read(authProvider.notifier).signOut();
+  runApp(UncontrolledProviderScope(container: container, child: const HumanLoopApp()));
 }
 
-class HumanLoopApp extends StatelessWidget {
+class HumanLoopApp extends ConsumerWidget {
   const HumanLoopApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
     final hasOnboarded = prefs.getBool('onboarded') ?? false;
-    final hasToken = prefs.getString('auth_token') != null;
 
     Widget home;
-    if (hasToken) {
+    if (auth.isSignedIn) {
       home = const RootNav();
     } else if (hasOnboarded) {
       home = const LoginScreen();
@@ -72,9 +76,7 @@ class _RootNavState extends State<RootNav> {
 
   static const _screens = [
     FeedScreen(),
-    CameraScreen(),
     LeaderboardScreen(),
-    HistoryScreen(),
     ProfileScreen(),
   ];
 
@@ -99,19 +101,9 @@ class _RootNavState extends State<RootNav> {
               label: 'Challenges',
             ),
             NavigationDestination(
-              icon: Icon(Icons.videocam_outlined),
-              selectedIcon: Icon(Icons.videocam, color: AppColors.primary),
-              label: 'Film',
-            ),
-            NavigationDestination(
               icon: Icon(Icons.leaderboard_outlined),
               selectedIcon: Icon(Icons.leaderboard, color: AppColors.primary),
               label: 'Leaders',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.history_outlined),
-              selectedIcon: Icon(Icons.history, color: AppColors.primary),
-              label: 'History',
             ),
             NavigationDestination(
               icon: Icon(Icons.person_outline),

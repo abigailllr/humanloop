@@ -5,17 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/abigailtech/humanloop/backend/db"
 	"github.com/abigailtech/humanloop/backend/models"
 )
-
-var fallbackChallenges = []models.Challenge{
-	{ID: "c1", Title: "Pick & Place", Description: "Pick up any object from a table and place it into a box.", Difficulty: "Easy"},
-	{ID: "c2", Title: "Fold It", Description: "Fold a piece of cloth or paper in half.", Difficulty: "Easy"},
-	{ID: "c3", Title: "Sort & Stack", Description: "Sort 5 objects by size from smallest to largest.", Difficulty: "Medium"},
-}
 
 func GetChallenges(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -28,7 +21,7 @@ func GetChallenges(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(fallbackChallenges)
+	json.NewEncoder(w).Encode(db.DefaultChallenges)
 }
 
 func CreateChallenge(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +58,7 @@ func CreateChallenge(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateChallenge(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.PathValue("id"), "")
+	id := r.PathValue("id")
 	if id == "" {
 		http.Error(w, "id required", http.StatusBadRequest)
 		return

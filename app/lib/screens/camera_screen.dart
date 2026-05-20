@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,43 +19,62 @@ class CameraScreen extends ConsumerStatefulWidget {
 
 class _CameraScreenState extends ConsumerState<CameraScreen> {
   CameraController? _controller;
+  List<CameraDescription> _cameras = [];
+  int _cameraIndex = 0;
   bool _initialized = false;
   bool _recording = false;
   bool _uploading = false;
-  bool _submitted = false;
   String? _videoPath;
   String? _error;
+  String? _submissionId;
+  Map<String, dynamic>? _result;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
-    if (widget.challenge != null) _initCamera();
+    if (widget.challenge != null) _initCamera(index: 0);
   }
 
-  Future<void> _initCamera() async {
+  Future<void> _initCamera({int index = 0}) async {
     try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
+      if (_cameras.isEmpty) {
+        _cameras = await availableCameras();
+      }
+      if (_cameras.isEmpty) {
         setState(() => _error = 'No camera found');
         return;
       }
-      _controller = CameraController(cameras.first, ResolutionPreset.high, enableAudio: true);
-      await _controller!.initialize();
-      if (mounted) setState(() => _initialized = true);
+      final prev = _controller;
+      final next = CameraController(_cameras[index], ResolutionPreset.high, enableAudio: true);
+      await next.initialize();
+      if (!mounted) { next.dispose(); return; }
+      setState(() {
+        _controller = next;
+        _cameraIndex = index;
+        _initialized = true;
+      });
+      await prev?.dispose();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
   }
 
+  Future<void> _switchCamera() async {
+    if (_cameras.length < 2 || _recording) return;
+    setState(() => _initialized = false);
+    await _initCamera(index: (_cameraIndex + 1) % _cameras.length);
+  }
+
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _controller?.dispose();
     super.dispose();
   }
 
   Future<void> _toggleRecord() async {
     if (_controller == null || !_initialized) return;
-
     if (_recording) {
       final file = await _controller!.stopVideoRecording();
       setState(() {
@@ -90,18 +110,49 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
       lng: lng,
       capturedAt: DateTime.now().toUtc().toIso8601String(),
     );
-    if (mounted) {
-      setState(() {
-        _uploading = false;
-        _submitted = result['submission_id'] != null || result['error'] == null;
-      });
+
+    if (!mounted) return;
+
+    final subId = result['submission_id'] as String?;
+    if (subId == null) {
+      setState(() => _uploading = false);
+      return;
     }
+
+    setState(() {
+      _uploading = false;
+      _submissionId = subId;
+    });
+
+    _startPolling(token, subId);
   }
 
-  void _retake() => setState(() {
-        _videoPath = null;
-        _submitted = false;
-      });
+  void _startPolling(String token, String subId) {
+    int attempts = 0;
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      attempts++;
+      if (attempts > 60) {
+        _pollTimer?.cancel();
+        if (mounted) setState(() => _result = {'status': 'timeout'});
+        return;
+      }
+      final data = await ApiService.getSubmission(token: token, id: subId);
+      final status = data['status'] as String?;
+      if (status == 'done' || status == 'failed' || status == 'synthetic') {
+        _pollTimer?.cancel();
+        if (mounted) setState(() => _result = data);
+      }
+    });
+  }
+
+  void _retake() {
+    _pollTimer?.cancel();
+    setState(() {
+      _videoPath = null;
+      _submissionId = null;
+      _result = null;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +198,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
     if (_error != null) {
       return Center(child: Text(_error!, style: const TextStyle(color: Colors.white)));
     }
-    if (_videoPath != null) {
+    if (_submissionId != null || _videoPath != null) {
       return const ColoredBox(
         color: Color(0xFF111111),
         child: Center(child: Icon(Icons.videocam_rounded, size: 80, color: AppColors.primary)),
@@ -191,11 +242,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
           colors: [Colors.black, Colors.black.withValues(alpha: 0)],
         ),
       ),
-      child: _submitted
-          ? _SuccessState(onBack: () => Navigator.pop(context))
-          : _videoPath != null
-              ? _PreviewControls(uploading: _uploading, onSubmit: _submit, onRetake: _retake)
-              : _RecordingControls(challenge: c, recording: _recording, initialized: _initialized, onToggle: _toggleRecord),
+      child: _result != null
+          ? _ResultState(result: _result!, onBack: () => Navigator.pop(context))
+          : _submissionId != null
+              ? const _ProcessingState()
+              : _videoPath != null
+                  ? _PreviewControls(uploading: _uploading, onSubmit: _submit, onRetake: _retake)
+                  : _RecordingControls(challenge: c, recording: _recording, initialized: _initialized, onToggle: _toggleRecord, onSwitch: _cameras.length > 1 ? _switchCamera : null),
     );
   }
 }
@@ -205,12 +258,14 @@ class _RecordingControls extends StatelessWidget {
   final bool recording;
   final bool initialized;
   final VoidCallback onToggle;
+  final VoidCallback? onSwitch;
 
   const _RecordingControls({
     required this.challenge,
     required this.recording,
     required this.initialized,
     required this.onToggle,
+    this.onSwitch,
   });
 
   @override
@@ -248,9 +303,21 @@ class _RecordingControls extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        Text(
-          recording ? 'Recording...' : initialized ? 'Tap to record' : 'Initializing...',
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              recording ? 'Recording...' : initialized ? 'Tap to record' : 'Initializing...',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
+            ),
+            if (onSwitch != null && !recording) ...[
+              const SizedBox(width: 16),
+              GestureDetector(
+                onTap: onSwitch,
+                child: const Icon(Icons.flip_camera_ios_outlined, color: Colors.white70, size: 22),
+              ),
+            ],
+          ],
         ),
       ],
     );
@@ -300,24 +367,65 @@ class _PreviewControls extends StatelessWidget {
   }
 }
 
-class _SuccessState extends StatelessWidget {
-  final VoidCallback onBack;
-  const _SuccessState({required this.onBack});
+class _ProcessingState extends StatelessWidget {
+  const _ProcessingState();
 
   @override
   Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        CircularProgressIndicator(color: Colors.white),
+        SizedBox(height: 20),
+        Text('Analysing your video...', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+        SizedBox(height: 6),
+        Text('This takes about 30 seconds.', style: TextStyle(fontSize: 13, color: Colors.white60)),
+      ],
+    );
+  }
+}
+
+class _ResultState extends StatelessWidget {
+  final Map<String, dynamic> result;
+  final VoidCallback onBack;
+
+  const _ResultState({required this.result, required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    final status = result['status'] as String? ?? 'failed';
+    final verified = status == 'done';
+    final synthetic = status == 'synthetic';
+    final timedOut = status == 'timeout';
+
+    final icon = verified ? Icons.verified_rounded : Icons.cancel_rounded;
+    final iconColor = verified ? AppColors.success : AppColors.danger;
+    final title = verified
+        ? 'Verified!'
+        : synthetic
+            ? 'AI Video Detected'
+            : timedOut
+                ? 'Still processing'
+                : 'Not Accepted';
+    final subtitle = verified
+        ? 'Credits added to your profile.'
+        : synthetic
+            ? 'Only real human footage is accepted.'
+            : timedOut
+                ? 'Check your profile later for the result.'
+                : 'Try a clearer recording next time.';
+
     return Column(
       children: [
         Container(
           width: 64,
           height: 64,
-          decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
-          child: const Icon(Icons.check, color: Colors.white, size: 32),
+          decoration: BoxDecoration(color: iconColor, shape: BoxShape.circle),
+          child: Icon(icon, color: Colors.white, size: 32),
         ),
         const SizedBox(height: 16),
-        const Text('Submitted!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
+        Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
         const SizedBox(height: 6),
-        Text('Your video is being processed.', style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.6))),
+        Text(subtitle, style: const TextStyle(fontSize: 14, color: Colors.white60)),
         const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
@@ -330,7 +438,10 @@ class _SuccessState extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
-            child: Text('Back to challenges', style: AppTextStyles.buttonLabel.copyWith(fontSize: 15)),
+            child: Text(
+              verified ? 'Back to challenges' : 'Try again',
+              style: AppTextStyles.buttonLabel.copyWith(fontSize: 15),
+            ),
           ),
         ),
       ],

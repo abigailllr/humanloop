@@ -78,7 +78,7 @@ func extractorPath() string {
 	if p := os.Getenv("EXTRACTOR_PATH"); p != "" {
 		return p
 	}
-	return "../extractor/main.py"
+	return "../scripts/extract.py"
 }
 
 func (p *Pipeline) worker() {
@@ -99,7 +99,9 @@ func (p *Pipeline) worker() {
 			job.CapturedAt,
 		}
 
-		out, err := exec.Command("python3", args...).Output()
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		out, err := exec.CommandContext(ctx, "python3", args...).Output()
+		cancel()
 
 		record := func() map[string]any {
 			if err != nil {
@@ -138,7 +140,9 @@ func (p *Pipeline) worker() {
 				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "synthetic", "", 0)
 			}
 			if isLocalPath(job.VideoPath) {
-				os.Remove(job.VideoPath)
+				if err := os.Remove(job.VideoPath); err != nil {
+					fmt.Println("remove video:", err)
+				}
 			}
 			continue
 		}
@@ -156,7 +160,9 @@ func (p *Pipeline) worker() {
 		}
 
 		if isLocalPath(job.VideoPath) {
-			os.Remove(job.VideoPath)
+			if err := os.Remove(job.VideoPath); err != nil {
+				fmt.Println("remove video:", err)
+			}
 		}
 
 		metrics.SubmissionsTotal.WithLabelValues("done").Inc()

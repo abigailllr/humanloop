@@ -16,11 +16,19 @@ class FeedScreen extends ConsumerStatefulWidget {
 
 class _FeedScreenState extends ConsumerState<FeedScreen> {
   late Future<List<Challenge>> _challenges;
+  String _filter = 'All';
+
+  static const _filters = ['All', 'Easy', 'Medium', 'Hard'];
 
   @override
   void initState() {
     super.initState();
     _challenges = ApiService.getChallenges();
+  }
+
+  List<Challenge> _apply(List<Challenge> list) {
+    if (_filter == 'All') return list;
+    return list.where((c) => c.difficulty.toLowerCase() == _filter.toLowerCase()).toList();
   }
 
   @override
@@ -52,6 +60,37 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   Text('Active Challenges', style: AppTextStyles.sectionTitle),
                   const SizedBox(height: 4),
                   Text('Film yourself. Earn credits.', style: AppTextStyles.caption),
+                  const SizedBox(height: 16),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: _filters.map((f) {
+                        final selected = f == _filter;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: GestureDetector(
+                            onTap: () => setState(() => _filter = f),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: selected ? AppColors.primary : AppColors.surfaceGray,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                f,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: selected ? Colors.white : AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -69,7 +108,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                     )),
                   );
                 }
-                final list = snap.data ?? [];
+                final list = _apply(snap.data ?? []);
+                if (list.isEmpty) {
+                  return SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 48),
+                      child: Center(child: Text('No $_filter challenges yet.', style: AppTextStyles.bodyMedium)),
+                    ),
+                  );
+                }
                 return SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (c, i) => ChallengeCard(
