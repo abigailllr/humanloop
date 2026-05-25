@@ -106,6 +106,17 @@ func Migrate(ctx context.Context) error {
 			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 		CREATE INDEX IF NOT EXISTS webhooks_dataset_id ON webhooks(dataset_id);
+
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code TEXT UNIQUE;
+		ALTER TABLE challenges ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+
+		CREATE TABLE IF NOT EXISTS referrals (
+			id          BIGSERIAL PRIMARY KEY,
+			referrer_id TEXT NOT NULL REFERENCES users(id),
+			referee_id  TEXT NOT NULL REFERENCES users(id) UNIQUE,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS referrals_referrer_id ON referrals(referrer_id);
 	`)
 	return err
 }

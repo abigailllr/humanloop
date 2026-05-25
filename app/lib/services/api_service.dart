@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/challenge.dart';
@@ -12,6 +13,7 @@ class AuthTokens {
 
 class ApiService {
   static const _base = String.fromEnvironment('API_URL', defaultValue: 'http://localhost:8080');
+  static String get baseUrl => _base;
   static void Function()? onUnauthorized;
 
   static const _fallbackChallenges = [
@@ -187,6 +189,67 @@ class ApiService {
       return jsonDecode(res.body);
     } catch (_) {
       return {};
+    }
+  }
+
+  static Stream<Map<String, dynamic>> streamSubmission({required String token, required String id}) async* {
+    final client = http.Client();
+    try {
+      final req = http.Request('GET', Uri.parse('$_base/v1/submissions/$id/stream'));
+      req.headers['Authorization'] = 'Bearer $token';
+      req.headers['Accept'] = 'text/event-stream';
+      final resp = await client.send(req);
+      if (resp.statusCode != 200) return;
+
+      final buffer = StringBuffer();
+      await for (final chunk in resp.stream.transform(const Utf8Decoder())) {
+        buffer.write(chunk);
+        final text = buffer.toString();
+        final lines = text.split('\n');
+        buffer.clear();
+        buffer.write(lines.last);
+
+        for (final line in lines.sublist(0, lines.length - 1)) {
+          if (line.startsWith('data: ')) {
+            final data = line.substring(6).trim();
+            if (data.isNotEmpty) {
+              try {
+                yield jsonDecode(data) as Map<String, dynamic>;
+              } catch (_) {}
+            }
+          }
+        }
+      }
+    } finally {
+      client.close();
+    }
+  }
+
+  static Future<Map<String, dynamic>> getReferral({required String token}) async {
+    try {
+      final res = await http.get(
+        Uri.parse('$_base/v1/referral'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 401) { onUnauthorized?.call(); return {}; }
+      if (res.statusCode != 200) return {};
+      return jsonDecode(res.body);
+    } catch (_) {
+      return {};
+    }
+  }
+
+  static Future<bool> redeemReferral({required String token, required String code}) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$_base/v1/referral/redeem'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'code': code}),
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 401) { onUnauthorized?.call(); return false; }
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
     }
   }
 }

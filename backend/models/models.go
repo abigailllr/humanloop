@@ -1,20 +1,22 @@
 package models
 
 type User struct {
-	ID          string `json:"id"`
-	Email       string `json:"email"`
-	Name        string `json:"name"`
-	Credits     int    `json:"credits"`
-	Submissions int    `json:"submissions"`
-	CreatedAt   string `json:"created_at"`
+	ID           string `json:"id"`
+	Email        string `json:"email"`
+	Name         string `json:"name"`
+	Credits      int    `json:"credits"`
+	Submissions  int    `json:"submissions"`
+	ReferralCode string `json:"referral_code,omitempty"`
+	CreatedAt    string `json:"created_at"`
 }
 
 type Challenge struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Difficulty  string `json:"difficulty"`
-	Submissions int    `json:"submissions"`
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Difficulty  string  `json:"difficulty"`
+	Submissions int     `json:"submissions"`
+	ExpiresAt   *string `json:"expires_at,omitempty"`
 }
 
 type Submission struct {
@@ -26,6 +28,7 @@ type Submission struct {
 	HmdfPath         string   `json:"hmdf_path,omitempty"`
 	Status           string   `json:"status"`
 	CreditsEarned    int      `json:"credits_earned"`
+	Robot            string   `json:"robot,omitempty"`
 	QualityScore     float64  `json:"quality_score,omitempty"`
 	ExtractorVersion string   `json:"extractor_version,omitempty"`
 	ConsentVersion   string   `json:"consent_version,omitempty"`

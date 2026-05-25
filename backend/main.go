@@ -114,6 +114,7 @@ func main() {
 	mux.Handle("GET /v1/profile/stats", middleware.Auth(http.HandlerFunc(handlers.GetUserStats)))
 	mux.Handle("GET /v1/credits/history", middleware.Auth(http.HandlerFunc(handlers.GetCreditHistory)))
 	mux.Handle("GET /v1/submissions/{id}", middleware.Auth(http.HandlerFunc(handlers.GetSubmission)))
+	mux.Handle("GET /v1/submissions/{id}/stream", middleware.Auth(http.HandlerFunc(handlers.StreamSubmission)))
 	mux.Handle("GET /v1/submissions", middleware.Auth(http.HandlerFunc(handlers.GetUserSubmissions)))
 	mux.HandleFunc("GET /v1/leaderboard", handlers.GetLeaderboard)
 	mux.HandleFunc("GET /v1/robots", handlers.GetRobots)
@@ -152,6 +153,8 @@ func main() {
 	mux.Handle("GET /v1/admin/analytics", middleware.APIKey(http.HandlerFunc(handlers.AdminGetAnalytics)))
 	mux.Handle("DELETE /v1/account", middleware.Auth(http.HandlerFunc(handlers.DeleteAccount)))
 
+	mux.Handle("GET /v1/referral", middleware.Auth(http.HandlerFunc(handlers.GetReferral)))
+	mux.Handle("POST /v1/referral/redeem", middleware.Auth(http.HandlerFunc(handlers.RedeemReferral)))
 	stack := middleware.Security(middleware.RealIP(middleware.Logger(mux)))
 	server := &http.Server{
 		Addr:         ":8080",

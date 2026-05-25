@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
@@ -34,6 +35,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final credits = user?.credits ?? 0;
     final submissions = user?.submissions ?? 0;
     final name = user?.name ?? 'Contributor';
+    final level = user?.level ?? 'Rookie';
+    final badges = user?.badges ?? [];
+    final referralCode = user?.referralCode ?? '';
 
     return SafeArea(
       child: FutureBuilder<List<Submission>>(
@@ -53,7 +57,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     children: [
                       Text('Profile', style: AppTextStyles.screenTitle),
                       const SizedBox(height: 28),
-                      _AvatarCard(name: name, submissions: submissions),
+                      _AvatarCard(name: name, submissions: submissions, level: level),
                       const SizedBox(height: 20),
                       _BalanceCard(credits: credits),
                       const SizedBox(height: 20),
@@ -64,23 +68,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           return _ActivityCard(submissions: submissions, verified: verified, qualityAvg: qualityAvg);
                         },
                       ),
-                      const SizedBox(height: 28),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Cash out coming soon.')),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          child: Text('Cash Out', style: AppTextStyles.buttonLabel),
-                        ),
-                      ),
+                      if (badges.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        _BadgesCard(badges: badges),
+                      ],
+                      const SizedBox(height: 20),
+                      _ReferralCard(code: referralCode, token: ref.read(authProvider).token ?? ''),
                       const SizedBox(height: 32),
                       if (list.isNotEmpty || snap.connectionState == ConnectionState.done) ...[
                         Text('My Submissions', style: AppTextStyles.sectionTitle),
@@ -207,7 +200,8 @@ class _CreditHistoryRow extends StatelessWidget {
 class _AvatarCard extends StatelessWidget {
   final String name;
   final int submissions;
-  const _AvatarCard({required this.name, required this.submissions});
+  final String level;
+  const _AvatarCard({required this.name, required this.submissions, required this.level});
 
   @override
   Widget build(BuildContext context) {
@@ -239,10 +233,10 @@ class _AvatarCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: AppColors.success.withValues(alpha: 0.1),
+              color: AppColors.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Text('Active', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.success)),
+            child: Text(level, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary)),
           ),
         ],
       ),
@@ -330,6 +324,168 @@ class _ActivityRow extends StatelessWidget {
         Expanded(child: Text(label, style: AppTextStyles.bodyMedium)),
         Text(value, style: AppTextStyles.cardTitle.copyWith(fontSize: 15)),
       ],
+    );
+  }
+}
+
+const _kBadgeLabels = {
+  'first_submission': ('First Step', Icons.flag_rounded),
+  'first_verified': ('First Verified', Icons.verified_rounded),
+  'ten_verified': ('10 Verified', Icons.workspace_premium_rounded),
+  'fifty_verified': ('50 Verified', Icons.emoji_events_rounded),
+  'century': ('Century', Icons.military_tech_rounded),
+  'quality_star': ('Quality Star', Icons.star_rounded),
+};
+
+class _BadgesCard extends StatelessWidget {
+  final List<String> badges;
+  const _BadgesCard({required this.badges});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Badges', style: AppTextStyles.cardTitle.copyWith(fontSize: 15)),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: badges.map((b) {
+              final info = _kBadgeLabels[b] ?? (b, Icons.star_rounded);
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(info.$2, size: 16, color: AppColors.primary),
+                    const SizedBox(width: 6),
+                    Text(info.$1, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReferralCard extends ConsumerStatefulWidget {
+  final String code;
+  final String token;
+  const _ReferralCard({required this.code, required this.token});
+
+  @override
+  ConsumerState<_ReferralCard> createState() => _ReferralCardState();
+}
+
+class _ReferralCardState extends ConsumerState<_ReferralCard> {
+  final _controller = TextEditingController();
+  bool _redeeming = false;
+  String? _msg;
+
+  Future<void> _redeem() async {
+    final code = _controller.text.trim();
+    if (code.isEmpty) return;
+    setState(() { _redeeming = true; _msg = null; });
+    final ok = await ApiService.redeemReferral(token: widget.token, code: code);
+    if (mounted) setState(() { _redeeming = false; _msg = ok ? 'You both earned 10 credits!' : 'Invalid or already used code.'; });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Invite Friends', style: AppTextStyles.cardTitle.copyWith(fontSize: 15)),
+          const SizedBox(height: 4),
+          Text('Share your code and both earn 10 credits.', style: AppTextStyles.bodySmall),
+          const SizedBox(height: 14),
+          if (widget.code.isNotEmpty)
+            GestureDetector(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: widget.code));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Code copied!')));
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceGray,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Text(widget.code.toUpperCase(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 3)),
+                    const Spacer(),
+                    const Icon(Icons.copy_rounded, size: 18, color: AppColors.textSecondary),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  decoration: InputDecoration(
+                    hintText: "Enter friend's code",
+                    hintStyle: AppTextStyles.bodySmall,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.border)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.border)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton(
+                onPressed: _redeeming ? null : _redeem,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: _redeeming ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Redeem'),
+              ),
+            ],
+          ),
+          if (_msg != null) ...[
+            const SizedBox(height: 10),
+            Text(_msg!, style: TextStyle(fontSize: 13, color: _msg!.contains('earned') ? AppColors.success : AppColors.danger)),
+          ],
+        ],
+      ),
     );
   }
 }

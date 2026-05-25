@@ -14,7 +14,7 @@ func Security(next http.Handler) http.Handler {
 			if allowed == "*" || origin == allowed {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-API-Key")
+				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-API-Key, X-Buyer-Key")
 			}
 		}
 

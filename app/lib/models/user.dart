@@ -6,6 +6,9 @@ class AppUser {
   final int credits;
   final int submissions;
   final int rank;
+  final String level;
+  final List<String> badges;
+  final String referralCode;
 
   const AppUser({
     required this.id,
@@ -15,6 +18,9 @@ class AppUser {
     this.credits = 0,
     this.submissions = 0,
     this.rank = 0,
+    this.level = 'Rookie',
+    this.badges = const [],
+    this.referralCode = '',
   });
 
   AppUser copyWith({
@@ -24,6 +30,9 @@ class AppUser {
     int? credits,
     int? submissions,
     int? rank,
+    String? level,
+    List<String>? badges,
+    String? referralCode,
   }) {
     return AppUser(
       id: id,
@@ -33,6 +42,9 @@ class AppUser {
       credits: credits ?? this.credits,
       submissions: submissions ?? this.submissions,
       rank: rank ?? this.rank,
+      level: level ?? this.level,
+      badges: badges ?? this.badges,
+      referralCode: referralCode ?? this.referralCode,
     );
   }
 
@@ -44,5 +56,8 @@ class AppUser {
         credits: j['credits'] as int? ?? 0,
         submissions: j['submissions'] as int? ?? 0,
         rank: j['rank'] as int? ?? 0,
+        level: j['level'] as String? ?? 'Rookie',
+        badges: (j['badges'] as List<dynamic>?)?.cast<String>() ?? [],
+        referralCode: j['referral_code'] as String? ?? '',
       );
 }

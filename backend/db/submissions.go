@@ -221,7 +221,6 @@ func ResetDLQ(ctx context.Context, id string) error {
 
 type SubmissionRetry struct {
 	models.Submission
-	Robot string
 }
 
 func GetSubmissionForRetry(ctx context.Context, id string) (SubmissionRetry, error) {
@@ -260,7 +259,7 @@ func GetAdminSubmissions(ctx context.Context, status, robot string, approved *bo
 	args = append(args, limit, offset)
 	rows, err := Pool.Query(ctx, fmt.Sprintf(`
 		SELECT s.id, s.challenge_id, c.title, s.status, s.credits_earned, s.quality_score,
-		       s.extractor_version, s.approved, s.tags, s.created_at
+		       s.robot, s.extractor_version, s.approved, s.tags, s.created_at
 		FROM submissions s
 		LEFT JOIN challenges c ON c.id = s.challenge_id
 		%s ORDER BY s.created_at DESC LIMIT $%d OFFSET $%d
@@ -273,7 +272,7 @@ func GetAdminSubmissions(ctx context.Context, status, robot string, approved *bo
 	for rows.Next() {
 		var s models.Submission
 		if err := rows.Scan(&s.ID, &s.ChallengeID, &s.ChallengeTitle, &s.Status, &s.CreditsEarned,
-			&s.QualityScore, &s.ExtractorVersion, &s.Approved, &s.Tags, &s.CreatedAt); err != nil {
+			&s.QualityScore, &s.Robot, &s.ExtractorVersion, &s.Approved, &s.Tags, &s.CreatedAt); err != nil {
 			continue
 		}
 		list = append(list, s)

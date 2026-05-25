@@ -19,8 +19,8 @@ func UpsertUser(ctx context.Context, u models.User) error {
 func GetUser(ctx context.Context, id string) (models.User, error) {
 	var u models.User
 	err := Pool.QueryRow(ctx, `
-		SELECT id, email, name, credits, submissions FROM users WHERE id = $1
-	`, id).Scan(&u.ID, &u.Email, &u.Name, &u.Credits, &u.Submissions)
+		SELECT id, email, name, credits, submissions, COALESCE(referral_code,'') FROM users WHERE id = $1
+	`, id).Scan(&u.ID, &u.Email, &u.Name, &u.Credits, &u.Submissions, &u.ReferralCode)
 	return u, err
 }
 
@@ -61,7 +61,8 @@ func GetLeaderboard(ctx context.Context, period string) ([]models.User, error) {
 func DeleteUser(ctx context.Context, userID string) error {
 	Pool.Exec(ctx, `DELETE FROM refresh_tokens WHERE user_id = $1`, userID)
 	Pool.Exec(ctx, `DELETE FROM credit_transactions WHERE user_id = $1`, userID)
-	Pool.Exec(ctx, `UPDATE submissions SET user_id = '' WHERE user_id = $1`, userID)
+	Pool.Exec(ctx, `DELETE FROM referrals WHERE referrer_id = $1 OR referee_id = $1`, userID)
+	Pool.Exec(ctx, `DELETE FROM submissions WHERE user_id = $1`, userID)
 	_, err := Pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
 	return err
 }

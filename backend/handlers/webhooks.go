@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -33,13 +32,12 @@ func CreateWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rawSecret := hex.EncodeToString(raw)
-	h := sha256.Sum256([]byte(rawSecret))
 
 	wh := models.Webhook{
 		ID:         uuid.New().String(),
 		DatasetID:  body.DatasetID,
 		URL:        body.URL,
-		SecretHash: hex.EncodeToString(h[:]),
+		SecretHash: rawSecret,
 		Active:     true,
 	}
 	if err := db.CreateWebhook(r.Context(), wh); err != nil {

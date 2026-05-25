@@ -131,6 +131,7 @@ func AdminRetrySubmission(w http.ResponseWriter, r *http.Request) {
 		VideoHash:      s.VideoHash,
 		ConsentVersion: s.ConsentVersion,
 	}
+	db.ResetDLQ(r.Context(), id)
 	db.UpdateSubmissionStatus(r.Context(), id, "pending", "", 0)
 	Pipeline.Enqueue(job)
 	w.WriteHeader(http.StatusAccepted)

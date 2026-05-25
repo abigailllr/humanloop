@@ -85,13 +85,14 @@ func ExportStats(w http.ResponseWriter, r *http.Request) {
 		avgQ = qualitySum / float64(total)
 	}
 	for _, s := range submissions {
-		byRobot[s.ExtractorVersion]++
+		byRobot[s.Robot]++
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"total_episodes":  total,
 		"quality_avg":     avgQ,
 		"by_challenge_id": byChallengeID,
+		"by_robot":        byRobot,
 	})
 }
 
