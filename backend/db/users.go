@@ -59,10 +59,16 @@ func GetLeaderboard(ctx context.Context, period string) ([]models.User, error) {
 }
 
 func DeleteUser(ctx context.Context, userID string) error {
-	Pool.Exec(ctx, `DELETE FROM refresh_tokens WHERE user_id = $1`, userID)
-	Pool.Exec(ctx, `DELETE FROM credit_transactions WHERE user_id = $1`, userID)
-	Pool.Exec(ctx, `DELETE FROM referrals WHERE referrer_id = $1 OR referee_id = $1`, userID)
-	Pool.Exec(ctx, `DELETE FROM submissions WHERE user_id = $1`, userID)
+	for _, q := range []string{
+		`DELETE FROM refresh_tokens WHERE user_id = $1`,
+		`DELETE FROM credit_transactions WHERE user_id = $1`,
+		`DELETE FROM referrals WHERE referrer_id = $1 OR referee_id = $1`,
+		`DELETE FROM submissions WHERE user_id = $1`,
+	} {
+		if _, err := Pool.Exec(ctx, q, userID); err != nil {
+			return err
+		}
+	}
 	_, err := Pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
 	return err
 }

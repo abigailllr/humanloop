@@ -58,13 +58,25 @@ func RedeemReferral(ctx context.Context, refereeID, code string) error {
 	if referrerID == refereeID {
 		return errors.New("cannot redeem own code")
 	}
-	_, err = Pool.Exec(ctx, `INSERT INTO referrals (referrer_id, referee_id) VALUES ($1, $2)`, referrerID, refereeID)
+
+	tx, err := Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, `INSERT INTO referrals (referrer_id, referee_id) VALUES ($1, $2)`, referrerID, refereeID)
 	if err != nil {
 		return errors.New("already redeemed")
 	}
-	Pool.Exec(ctx, `UPDATE users SET credits = credits + 10 WHERE id = $1`, referrerID)
-	Pool.Exec(ctx, `UPDATE users SET credits = credits + 10 WHERE id = $1`, refereeID)
-	LogCreditTransaction(ctx, referrerID, "", "referral_bonus", 10)
-	LogCreditTransaction(ctx, refereeID, "", "referral_bonus", 10)
-	return nil
+	if _, err = tx.Exec(ctx, `UPDATE users SET credits = credits + 10 WHERE id = $1`, referrerID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE users SET credits = credits + 10 WHERE id = $1`, refereeID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO credit_transactions (user_id, amount, reason) VALUES ($1, 10, 'referral_bonus'), ($2, 10, 'referral_bonus')`, referrerID, refereeID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

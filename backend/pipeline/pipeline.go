@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"io"
 	"net/http"
 	"os"
@@ -197,7 +198,7 @@ func (p *Pipeline) worker() {
 			}
 			if isLocalPath(job.VideoPath) {
 				if err := os.Remove(job.VideoPath); err != nil {
-					fmt.Println("remove video:", err)
+					log.Println("remove video:", err)
 				}
 			}
 			go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "synthetic", job.ChallengeTitle, 0)
@@ -231,7 +232,7 @@ func (p *Pipeline) worker() {
 
 		if isLocalPath(job.VideoPath) {
 			if err := os.Remove(job.VideoPath); err != nil {
-				fmt.Println("remove video:", err)
+				log.Println("remove video:", err)
 			}
 		}
 

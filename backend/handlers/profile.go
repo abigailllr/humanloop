@@ -58,10 +58,13 @@ func GetProfile(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			var doneCount int
 			var avgQuality float64
-			db.Pool.QueryRow(r.Context(), `
+			if scanErr := db.Pool.QueryRow(r.Context(), `
 				SELECT COUNT(*), COALESCE(AVG(quality_score),0)
 				FROM submissions WHERE user_id=$1 AND status='done'
-			`, userID).Scan(&doneCount, &avgQuality)
+			`, userID).Scan(&doneCount, &avgQuality); scanErr != nil {
+				doneCount = 0
+				avgQuality = 0
+			}
 
 			level := userLevel(doneCount)
 			badges := computeBadges(doneCount, avgQuality, u.Credits)

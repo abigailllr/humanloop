@@ -50,6 +50,9 @@ func StreamSubmission(w http.ResponseWriter, r *http.Request) {
 			if isTerminal(string(result.Status)) {
 				return
 			}
+		} else {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
 		}
 	}
 

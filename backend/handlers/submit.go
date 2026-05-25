@@ -155,7 +155,10 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if db.Pool != nil {
-		db.CreateSubmission(r.Context(), submission)
+		if err := db.CreateSubmission(r.Context(), submission); err != nil {
+			http.Error(w, "failed to record submission", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if Queue != nil {

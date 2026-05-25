@@ -40,7 +40,8 @@ func (l *ipLimiter) get(ip string) *rate.Limiter {
 }
 
 func (l *ipLimiter) cleanup() {
-	for range time.Tick(5 * time.Minute) {
+	t := time.NewTicker(5 * time.Minute)
+	for range t.C {
 		l.mu.Lock()
 		for ip, v := range l.visitors {
 			if time.Since(v.lastSeen) > 10*time.Minute {

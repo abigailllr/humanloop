@@ -15,22 +15,33 @@ var Pipeline *pipeline.Pipeline
 
 func GetSubmission(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	userID := r.Context().Value(middleware.UserIDKey).(string)
 	w.Header().Set("Content-Type", "application/json")
 
 	if result, ok := Pipeline.Result(id); ok {
+		if result.SubmissionID != id {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
 		json.NewEncoder(w).Encode(result)
 		return
 	}
 
 	if db.Pool != nil {
 		s, err := db.GetSubmission(r.Context(), id)
-		if err == nil {
-			json.NewEncoder(w).Encode(map[string]any{
-				"submission_id": s.ID,
-				"status":        s.Status,
-			})
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
+		if s.UserID != userID {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"submission_id": s.ID,
+			"status":        s.Status,
+		})
+		return
 	}
 
 	http.Error(w, "not found", http.StatusNotFound)

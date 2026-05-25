@@ -3,6 +3,7 @@ package handlers
 import (
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -138,7 +139,7 @@ func lerobotRow(record map[string]any) map[string]any {
 
 func readHMDF(path string) (map[string]any, error) {
 	if strings.HasPrefix(path, "s3://") {
-		return nil, nil
+		return nil, fmt.Errorf("s3 hmdf not available for local export")
 	}
 	f, err := os.Open(path)
 	if err != nil {
