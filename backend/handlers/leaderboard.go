@@ -15,7 +15,8 @@ func GetLeaderboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := db.GetLeaderboard(r.Context())
+	period := r.URL.Query().Get("period")
+	entries, err := db.GetLeaderboard(r.Context(), period)
 	if err != nil {
 		http.Error(w, "db error", http.StatusInternalServerError)
 		return

@@ -149,6 +149,9 @@ func main() {
 	mux.Handle("POST /v1/admin/webhooks", middleware.APIKey(http.HandlerFunc(handlers.CreateWebhook)))
 	mux.Handle("DELETE /v1/admin/webhooks/{id}", middleware.APIKey(http.HandlerFunc(handlers.DeleteWebhook)))
 
+	mux.Handle("GET /v1/admin/analytics", middleware.APIKey(http.HandlerFunc(handlers.AdminGetAnalytics)))
+	mux.Handle("DELETE /v1/account", middleware.Auth(http.HandlerFunc(handlers.DeleteAccount)))
+
 	stack := middleware.Security(middleware.RealIP(middleware.Logger(mux)))
 	server := &http.Server{
 		Addr:         ":8080",
