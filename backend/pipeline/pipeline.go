@@ -19,7 +19,9 @@ import (
 	"time"
 
 	"github.com/abigailtech/humanloop/backend/db"
+	"github.com/abigailtech/humanloop/backend/hub"
 	"github.com/abigailtech/humanloop/backend/metrics"
+	"github.com/abigailtech/humanloop/backend/notifications"
 )
 
 type Status string
@@ -31,20 +33,32 @@ const (
 	StatusFailed     Status = "failed"
 )
 
-const creditsPerSubmission = 10
-
 type Job struct {
-	SubmissionID   string
-	ChallengeID    string
-	ChallengeTitle string
-	UserID         string
-	VideoPath      string
-	Latitude       float64
-	Longitude      float64
-	CapturedAt     string
-	Robot          string
-	VideoHash      string
-	ConsentVersion string
+	SubmissionID        string
+	ChallengeID         string
+	ChallengeTitle      string
+	ChallengeDifficulty string
+	UserID              string
+	UserEmail           string
+	UserName            string
+	VideoPath           string
+	Latitude            float64
+	Longitude           float64
+	CapturedAt          string
+	Robot               string
+	VideoHash           string
+	ConsentVersion      string
+}
+
+func creditsForDifficulty(difficulty string) int {
+	switch difficulty {
+	case "Hard":
+		return 20
+	case "Medium":
+		return 15
+	default:
+		return 10
+	}
 }
 
 type JobResult struct {
@@ -92,11 +106,21 @@ func extractorPath() string {
 	return "../scripts/extract.py"
 }
 
+func hubEvent(submissionID, status string, credits int) []byte {
+	b, _ := json.Marshal(map[string]any{
+		"submission_id":  submissionID,
+		"status":         status,
+		"credits_earned": credits,
+	})
+	return b
+}
+
 func (p *Pipeline) worker() {
 	for job := range p.jobs {
 		start := time.Now()
 		metrics.ActiveJobs.Inc()
 		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusProcessing})
+		hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "processing", 0))
 
 		robot := job.Robot
 		if robot == "" {
@@ -133,12 +157,14 @@ func (p *Pipeline) worker() {
 				metrics.ActiveJobs.Dec()
 				metrics.PipelineDuration.Observe(time.Since(start).Seconds())
 				p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: errMsg})
+				hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "failed", 0))
 				if db.Pool != nil {
 					db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
 					if count, err := db.IncrementRetryCount(context.Background(), job.SubmissionID); err == nil && count >= 3 {
 						db.MarkDLQ(context.Background(), job.SubmissionID)
 					}
 				}
+				go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "failed", job.ChallengeTitle, 0)
 				return nil
 			}
 			var r map[string]any
@@ -147,9 +173,11 @@ func (p *Pipeline) worker() {
 				metrics.ActiveJobs.Dec()
 				metrics.PipelineDuration.Observe(time.Since(start).Seconds())
 				p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: "invalid extractor output"})
+				hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "failed", 0))
 				if db.Pool != nil {
 					db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
 				}
+				go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "failed", job.ChallengeTitle, 0)
 				return nil
 			}
 			return r
@@ -163,6 +191,7 @@ func (p *Pipeline) worker() {
 			metrics.ActiveJobs.Dec()
 			metrics.PipelineDuration.Observe(time.Since(start).Seconds())
 			p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: "synthetic video detected"})
+			hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "synthetic", 0))
 			if db.Pool != nil {
 				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "synthetic", "", 0)
 			}
@@ -171,6 +200,7 @@ func (p *Pipeline) worker() {
 					fmt.Println("remove video:", err)
 				}
 			}
+			go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "synthetic", job.ChallengeTitle, 0)
 			continue
 		}
 
@@ -180,9 +210,11 @@ func (p *Pipeline) worker() {
 			metrics.ActiveJobs.Dec()
 			metrics.PipelineDuration.Observe(time.Since(start).Seconds())
 			p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: err.Error()})
+			hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "failed", 0))
 			if db.Pool != nil {
 				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
 			}
+			go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "failed", job.ChallengeTitle, 0)
 			continue
 		}
 
@@ -203,6 +235,7 @@ func (p *Pipeline) worker() {
 			}
 		}
 
+		credits := creditsForDifficulty(job.ChallengeDifficulty)
 		qs := qualityScore(record)
 		extractorVersion, _ := record["hmdf_version"].(string)
 
@@ -212,14 +245,16 @@ func (p *Pipeline) worker() {
 		metrics.ActiveJobs.Dec()
 		metrics.PipelineDuration.Observe(time.Since(start).Seconds())
 		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusDone})
+		hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "done", credits))
 		if db.Pool != nil {
-			db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "done", hmdfPath, creditsPerSubmission)
+			db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "done", hmdfPath, credits)
 			db.SetSubmissionQuality(context.Background(), job.SubmissionID, qs, extractorVersion)
-			db.AddCredits(context.Background(), job.UserID, creditsPerSubmission)
-			db.LogCreditTransaction(context.Background(), job.UserID, job.SubmissionID, "submission", creditsPerSubmission)
+			db.AddCredits(context.Background(), job.UserID, credits)
+			db.LogCreditTransaction(context.Background(), job.UserID, job.SubmissionID, "submission", credits)
 			db.IncrementChallengeSubmissions(context.Background(), job.ChallengeID)
 			go dispatchWebhooks(job.SubmissionID, job.ChallengeID, qs)
 		}
+		go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "done", job.ChallengeTitle, credits)
 	}
 }
 

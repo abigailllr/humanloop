@@ -19,8 +19,8 @@ func UpsertUser(ctx context.Context, u models.User) error {
 func GetUser(ctx context.Context, id string) (models.User, error) {
 	var u models.User
 	err := Pool.QueryRow(ctx, `
-		SELECT id, email, name, credits, submissions FROM users WHERE id = $1
-	`, id).Scan(&u.ID, &u.Email, &u.Name, &u.Credits, &u.Submissions)
+		SELECT id, email, name, credits, submissions, COALESCE(referral_code,'') FROM users WHERE id = $1
+	`, id).Scan(&u.ID, &u.Email, &u.Name, &u.Credits, &u.Submissions, &u.ReferralCode)
 	return u, err
 }
 

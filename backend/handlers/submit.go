@@ -113,6 +113,9 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := challengeTitle(challengeID)
+	difficulty := challengeDifficulty(challengeID)
+	userEmail := r.Context().Value(middleware.UserEmailKey).(string)
+	userName := r.Context().Value(middleware.UserNameKey).(string)
 
 	submission := models.Submission{
 		ID:             uuid.New().String(),
@@ -128,17 +131,20 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job := pipeline.Job{
-		SubmissionID:   submission.ID,
-		ChallengeID:    submission.ChallengeID,
-		ChallengeTitle: title,
-		UserID:         submission.UserID,
-		VideoPath:      submission.VideoPath,
-		Latitude:       lat,
-		Longitude:      lng,
-		CapturedAt:     capturedAt,
-		Robot:          robot,
-		VideoHash:      videoHash,
-		ConsentVersion: consentVersion,
+		SubmissionID:        submission.ID,
+		ChallengeID:         submission.ChallengeID,
+		ChallengeTitle:      title,
+		ChallengeDifficulty: difficulty,
+		UserID:              submission.UserID,
+		UserEmail:           userEmail,
+		UserName:            userName,
+		VideoPath:           submission.VideoPath,
+		Latitude:            lat,
+		Longitude:           lng,
+		CapturedAt:          capturedAt,
+		Robot:               robot,
+		VideoHash:           videoHash,
+		ConsentVersion:      consentVersion,
 	}
 
 	if db.Pool != nil {
@@ -165,13 +171,8 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 
 func challengeTitle(id string) string {
 	if db.Pool != nil {
-		challenges, err := db.GetChallenges(context.Background())
-		if err == nil {
-			for _, c := range challenges {
-				if c.ID == id {
-					return c.Title
-				}
-			}
+		if c, err := db.GetChallenge(context.Background(), id); err == nil {
+			return c.Title
 		}
 	}
 	for _, c := range db.DefaultChallenges {
@@ -180,4 +181,18 @@ func challengeTitle(id string) string {
 		}
 	}
 	return ""
+}
+
+func challengeDifficulty(id string) string {
+	if db.Pool != nil {
+		if c, err := db.GetChallenge(context.Background(), id); err == nil {
+			return c.Difficulty
+		}
+	}
+	for _, c := range db.DefaultChallenges {
+		if c.ID == id {
+			return c.Difficulty
+		}
+	}
+	return "Easy"
 }

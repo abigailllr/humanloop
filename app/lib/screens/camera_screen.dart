@@ -28,7 +28,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
   String? _error;
   String? _submissionId;
   Map<String, dynamic>? _result;
-  Timer? _pollTimer;
+  StreamSubscription<Map<String, dynamic>>? _streamSub;
   String _selectedRobot = 'generic_bimanual';
 
   @override
@@ -69,7 +69,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _streamSub?.cancel();
     _controller?.dispose();
     super.dispose();
   }
@@ -126,29 +126,31 @@ class _CameraScreenState extends ConsumerState<CameraScreen> {
       _submissionId = subId;
     });
 
-    _startPolling(token, subId);
+    _startStreaming(token, subId);
   }
 
-  void _startPolling(String token, String subId) {
-    int attempts = 0;
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      attempts++;
-      if (attempts > 60) {
-        _pollTimer?.cancel();
-        if (mounted) setState(() => _result = {'status': 'timeout'});
-        return;
-      }
-      final data = await ApiService.getSubmission(token: token, id: subId);
-      final status = data['status'] as String?;
-      if (status == 'done' || status == 'failed' || status == 'synthetic') {
-        _pollTimer?.cancel();
-        if (mounted) setState(() => _result = data);
-      }
-    });
+  void _startStreaming(String token, String subId) {
+    _streamSub = ApiService.streamSubmission(token: token, id: subId).listen(
+      (data) {
+        final status = data['status'] as String?;
+        if (status == 'done' || status == 'failed' || status == 'synthetic') {
+          _streamSub?.cancel();
+          if (mounted) setState(() => _result = data);
+        }
+      },
+      onError: (_) {
+        if (mounted) setState(() => _result = {'status': 'failed'});
+      },
+      onDone: () {
+        if (mounted && _result == null) {
+          setState(() => _result = {'status': 'failed'});
+        }
+      },
+    );
   }
 
   void _retake() {
-    _pollTimer?.cancel();
+    _streamSub?.cancel();
     setState(() {
       _videoPath = null;
       _submissionId = null;

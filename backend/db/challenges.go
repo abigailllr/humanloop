@@ -28,7 +28,12 @@ func SeedChallenges(ctx context.Context) error {
 }
 
 func GetChallenges(ctx context.Context) ([]models.Challenge, error) {
-	rows, err := Pool.Query(ctx, `SELECT id, title, description, difficulty, submissions FROM challenges ORDER BY id`)
+	rows, err := Pool.Query(ctx, `
+		SELECT id, title, description, difficulty, submissions, expires_at
+		FROM challenges
+		WHERE expires_at IS NULL OR expires_at > NOW()
+		ORDER BY id
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -37,12 +42,20 @@ func GetChallenges(ctx context.Context) ([]models.Challenge, error) {
 	var list []models.Challenge
 	for rows.Next() {
 		var c models.Challenge
-		if err := rows.Scan(&c.ID, &c.Title, &c.Description, &c.Difficulty, &c.Submissions); err != nil {
+		if err := rows.Scan(&c.ID, &c.Title, &c.Description, &c.Difficulty, &c.Submissions, &c.ExpiresAt); err != nil {
 			continue
 		}
 		list = append(list, c)
 	}
 	return list, nil
+}
+
+func GetChallenge(ctx context.Context, id string) (models.Challenge, error) {
+	var c models.Challenge
+	err := Pool.QueryRow(ctx, `
+		SELECT id, title, description, difficulty, submissions, expires_at FROM challenges WHERE id=$1
+	`, id).Scan(&c.ID, &c.Title, &c.Description, &c.Difficulty, &c.Submissions, &c.ExpiresAt)
+	return c, err
 }
 
 func IncrementChallengeSubmissions(ctx context.Context, challengeID string) error {
@@ -52,16 +65,16 @@ func IncrementChallengeSubmissions(ctx context.Context, challengeID string) erro
 
 func CreateChallenge(ctx context.Context, c models.Challenge) error {
 	_, err := Pool.Exec(ctx, `
-		INSERT INTO challenges (id, title, description, difficulty)
-		VALUES ($1, $2, $3, $4)
-	`, c.ID, c.Title, c.Description, c.Difficulty)
+		INSERT INTO challenges (id, title, description, difficulty, expires_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`, c.ID, c.Title, c.Description, c.Difficulty, c.ExpiresAt)
 	return err
 }
 
 func UpdateChallenge(ctx context.Context, c models.Challenge) error {
 	_, err := Pool.Exec(ctx, `
-		UPDATE challenges SET title=$2, description=$3, difficulty=$4 WHERE id=$1
-	`, c.ID, c.Title, c.Description, c.Difficulty)
+		UPDATE challenges SET title=$2, description=$3, difficulty=$4, expires_at=$5 WHERE id=$1
+	`, c.ID, c.Title, c.Description, c.Difficulty, c.ExpiresAt)
 	return err
 }
 

@@ -26,10 +26,11 @@ func GetChallenges(w http.ResponseWriter, r *http.Request) {
 
 func CreateChallenge(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ID          string `json:"id"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		Difficulty  string `json:"difficulty"`
+		ID          string  `json:"id"`
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Difficulty  string  `json:"difficulty"`
+		ExpiresAt   *string `json:"expires_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -53,7 +54,7 @@ func CreateChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c := models.Challenge{ID: body.ID, Title: body.Title, Description: body.Description, Difficulty: body.Difficulty}
+	c := models.Challenge{ID: body.ID, Title: body.Title, Description: body.Description, Difficulty: body.Difficulty, ExpiresAt: body.ExpiresAt}
 	if err := db.CreateChallenge(r.Context(), c); err != nil {
 		http.Error(w, "failed to create", http.StatusInternalServerError)
 		return
@@ -69,9 +70,10 @@ func UpdateChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		Difficulty  string `json:"difficulty"`
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Difficulty  string  `json:"difficulty"`
+		ExpiresAt   *string `json:"expires_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -81,7 +83,7 @@ func UpdateChallenge(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "difficulty must be Easy, Medium, or Hard", http.StatusBadRequest)
 		return
 	}
-	c := models.Challenge{ID: id, Title: body.Title, Description: body.Description, Difficulty: body.Difficulty}
+	c := models.Challenge{ID: id, Title: body.Title, Description: body.Description, Difficulty: body.Difficulty, ExpiresAt: body.ExpiresAt}
 	if err := db.UpdateChallenge(r.Context(), c); err != nil {
 		http.Error(w, "failed to update", http.StatusInternalServerError)
 		return
