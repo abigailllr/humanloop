@@ -123,3 +123,18 @@ func AdminTagSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func AdminGetAnalytics(w http.ResponseWriter, r *http.Request) {
+	if db.Pool == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{})
+		return
+	}
+	data, err := db.GetAnalytics(r.Context())
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}

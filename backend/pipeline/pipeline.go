@@ -294,9 +294,9 @@ func sendWebhook(url, secretHash, datasetID string, payload []byte) {
 	mac.Write(payload)
 	sig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			time.Sleep(5 * time.Second)
+	for _, delay := range []time.Duration{0, 30 * time.Second, 5 * time.Minute} {
+		if delay > 0 {
+			time.Sleep(delay)
 		}
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(payload))
 		if err != nil {
