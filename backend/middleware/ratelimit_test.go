@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -78,16 +79,32 @@ func TestRateLimitAuth_IsolatesIPs(t *testing.T) {
 	}
 }
 
-func TestRealIP_XForwardedFor(t *testing.T) {
+func TestRealIP_XForwardedFor_WithTrustedProxy(t *testing.T) {
+	os.Setenv("TRUSTED_PROXY", "192.0.2.1")
+	defer os.Unsetenv("TRUSTED_PROXY")
 	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "192.0.2.1:1234"
 	req.Header.Set("X-Forwarded-For", "1.2.3.4, 5.6.7.8")
 	if got := realIP(req); got != "1.2.3.4" {
 		t.Fatalf("want 1.2.3.4, got %s", got)
 	}
 }
 
-func TestRealIP_XRealIP(t *testing.T) {
+func TestRealIP_XForwardedFor_UntrustedProxy(t *testing.T) {
+	os.Unsetenv("TRUSTED_PROXY")
 	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "1.2.3.4:9999"
+	req.Header.Set("X-Forwarded-For", "9.9.9.9")
+	if got := realIP(req); got != "1.2.3.4" {
+		t.Fatalf("want RemoteAddr 1.2.3.4, got %s", got)
+	}
+}
+
+func TestRealIP_XRealIP_WithTrustedProxy(t *testing.T) {
+	os.Setenv("TRUSTED_PROXY", "192.0.2.1")
+	defer os.Unsetenv("TRUSTED_PROXY")
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "192.0.2.1:1234"
 	req.Header.Set("X-Real-IP", "9.9.9.9")
 	if got := realIP(req); got != "9.9.9.9" {
 		t.Fatalf("want 9.9.9.9, got %s", got)
@@ -95,6 +112,7 @@ func TestRealIP_XRealIP(t *testing.T) {
 }
 
 func TestRealIP_RemoteAddr(t *testing.T) {
+	os.Unsetenv("TRUSTED_PROXY")
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = "127.0.0.1:5678"
 	if got := realIP(req); got != "127.0.0.1" {

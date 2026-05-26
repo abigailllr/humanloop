@@ -95,11 +95,7 @@ func BuyerKeyOrAPIKey(next http.Handler) http.Handler {
 }
 
 func jwtSecret() string {
-	s := os.Getenv("JWT_SECRET")
-	if s == "" {
-		return "dev-secret-change-in-production"
-	}
-	return s
+	return os.Getenv("JWT_SECRET")
 }
 
 func stringClaim(claims jwt.MapClaims, key string) string {

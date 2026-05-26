@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -79,15 +80,22 @@ func RateLimitSubmit(next http.Handler) http.Handler {
 	})
 }
 
-func realIP(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		return strings.Split(fwd, ",")[0]
-	}
-	if real := r.Header.Get("X-Real-IP"); real != "" {
-		return real
-	}
+func remoteHost(r *http.Request) string {
 	if idx := strings.LastIndex(r.RemoteAddr, ":"); idx != -1 {
 		return r.RemoteAddr[:idx]
 	}
 	return r.RemoteAddr
+}
+
+func realIP(r *http.Request) string {
+	trusted := os.Getenv("TRUSTED_PROXY")
+	if trusted != "" && remoteHost(r) == trusted {
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			return strings.TrimSpace(strings.Split(fwd, ",")[0])
+		}
+		if real := r.Header.Get("X-Real-IP"); real != "" {
+			return real
+		}
+	}
+	return remoteHost(r)
 }

@@ -13,6 +13,7 @@ import (
 )
 
 func CreateWebhook(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	var body struct {
 		DatasetID string `json:"dataset_id"`
 		URL       string `json:"url"`

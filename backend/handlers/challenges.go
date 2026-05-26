@@ -25,6 +25,7 @@ func GetChallenges(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateChallenge(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	var body struct {
 		ID          string  `json:"id"`
 		Title       string  `json:"title"`
@@ -64,6 +65,7 @@ func CreateChallenge(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateChallenge(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	id := r.PathValue("id")
 	if id == "" {
 		http.Error(w, "id required", http.StatusBadRequest)

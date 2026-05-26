@@ -34,6 +34,7 @@ func GetReferral(w http.ResponseWriter, r *http.Request) {
 }
 
 func RedeemReferral(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4*1024)
 	userID := r.Context().Value(middleware.UserIDKey).(string)
 
 	var body struct {

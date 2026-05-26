@@ -249,9 +249,6 @@ func verifyAppleToken(identityToken string) (ljwt.Token, error) {
 
 func issueJWT(sub, email, name string) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		secret = "dev-secret-change-in-production"
-	}
 
 	claims := jwt.MapClaims{
 		"sub":   sub,

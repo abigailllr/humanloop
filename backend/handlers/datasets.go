@@ -34,6 +34,7 @@ func GetDatasets(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateDataset(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	var body struct {
 		Title       string  `json:"title"`
 		Description string  `json:"description"`
@@ -128,6 +129,7 @@ func ExportDataset(w http.ResponseWriter, r *http.Request) {
 }
 
 func PatchDataset(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	id := r.PathValue("id")
 	if db.Pool == nil {
 		http.Error(w, "db unavailable", http.StatusServiceUnavailable)

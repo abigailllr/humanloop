@@ -23,7 +23,10 @@ func main() {
 	ctx := context.Background()
 
 	if os.Getenv("JWT_SECRET") == "" {
-		log.Println("warning: JWT_SECRET not set, using insecure default")
+		log.Fatal("JWT_SECRET is required")
+	}
+	if os.Getenv("API_KEY") == "" {
+		log.Fatal("API_KEY is required")
 	}
 
 	extractedDir := os.Getenv("EXTRACTED_DIR")
@@ -90,6 +93,7 @@ func main() {
 				backoff = time.Second
 				var job pipeline.Job
 				if err := json.Unmarshal(data, &job); err != nil {
+					log.Println("queue: malformed job dropped:", err)
 					continue
 				}
 				handlers.Pipeline.Enqueue(job)
