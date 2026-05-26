@@ -63,7 +63,9 @@ func main() {
 			return k.DatasetID, true
 		}
 		go func() {
-			for range time.Tick(6 * time.Hour) {
+			t := time.NewTicker(6 * time.Hour)
+			defer t.Stop()
+			for range t.C {
 				db.PurgeExpiredRefreshTokens(context.Background())
 			}
 		}()
@@ -75,11 +77,17 @@ func main() {
 	} else {
 		handlers.Queue = q
 		go func() {
+			backoff := time.Second
 			for {
 				data, err := q.Pop(ctx)
 				if err != nil {
+					time.Sleep(backoff)
+					if backoff < 30*time.Second {
+						backoff *= 2
+					}
 					continue
 				}
+				backoff = time.Second
 				var job pipeline.Job
 				if err := json.Unmarshal(data, &job); err != nil {
 					continue
@@ -121,7 +129,7 @@ func main() {
 
 	mux.Handle("GET /v1/data/export", middleware.APIKey(http.HandlerFunc(handlers.ExportData)))
 	mux.Handle("GET /v1/data/stats", middleware.APIKey(http.HandlerFunc(handlers.ExportStats)))
-	mux.HandleFunc("GET /v1/data/heatmap", handlers.GetHeatmap)
+	mux.Handle("GET /v1/data/heatmap", middleware.APIKey(http.HandlerFunc(handlers.GetHeatmap)))
 
 	buyerOrAdmin := middleware.BuyerKeyOrAPIKey
 	mux.Handle("GET /v1/datasets", buyerOrAdmin(http.HandlerFunc(handlers.GetDatasets)))
@@ -172,6 +180,7 @@ func main() {
 		shutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		server.Shutdown(shutCtx)
+		handlers.Pipeline.Shutdown()
 	}()
 
 	log.Println("listening on :8080")

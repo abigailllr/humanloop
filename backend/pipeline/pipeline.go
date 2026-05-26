@@ -9,8 +9,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -51,17 +51,6 @@ type Job struct {
 	ConsentVersion      string
 }
 
-func creditsForDifficulty(difficulty string) int {
-	switch difficulty {
-	case "Hard":
-		return 20
-	case "Medium":
-		return 15
-	default:
-		return 10
-	}
-}
-
 type JobResult struct {
 	SubmissionID string `json:"submission_id"`
 	Status       Status `json:"status"`
@@ -73,6 +62,7 @@ type Pipeline struct {
 	results    sync.Map
 	outDir     string
 	hmdfUpload func(submissionID string, r io.Reader) (string, error)
+	wg         sync.WaitGroup
 }
 
 func New(workers int, outDir string, hmdfUpload func(submissionID string, r io.Reader) (string, error)) *Pipeline {
@@ -85,6 +75,11 @@ func New(workers int, outDir string, hmdfUpload func(submissionID string, r io.R
 		go p.worker()
 	}
 	return p
+}
+
+func (p *Pipeline) Shutdown() {
+	close(p.jobs)
+	p.wg.Wait()
 }
 
 func (p *Pipeline) Enqueue(job Job) {
@@ -116,156 +111,166 @@ func hubEvent(submissionID, status string, credits int) []byte {
 	return b
 }
 
+func creditsForDifficulty(difficulty string) int {
+	switch difficulty {
+	case "Hard":
+		return 20
+	case "Medium":
+		return 15
+	default:
+		return 10
+	}
+}
+
 func (p *Pipeline) worker() {
 	for job := range p.jobs {
-		start := time.Now()
-		metrics.ActiveJobs.Inc()
-		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusProcessing})
-		hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "processing", 0))
+		p.wg.Add(1)
+		p.process(job)
+		p.wg.Done()
+	}
+}
 
-		robot := job.Robot
-		if robot == "" {
-			robot = "generic_bimanual"
+func (p *Pipeline) process(job Job) {
+	start := time.Now()
+	metrics.ActiveJobs.Inc()
+	p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusProcessing})
+	hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "processing", 0))
+
+	robot := job.Robot
+	if robot == "" {
+		robot = "generic_bimanual"
+	}
+
+	args := []string{
+		extractorPath(), "extract",
+		job.VideoPath,
+		job.SubmissionID,
+		job.ChallengeID,
+		job.ChallengeTitle,
+		job.UserID,
+		fmt.Sprintf("%f", job.Latitude),
+		fmt.Sprintf("%f", job.Longitude),
+		job.CapturedAt,
+		robot,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	cmd := exec.CommandContext(ctx, "python3", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	cancel()
+
+	if err != nil {
+		errMsg := err.Error()
+		if s := stderr.String(); s != "" {
+			errMsg = s
 		}
-
-		args := []string{
-			extractorPath(), "extract",
-			job.VideoPath,
-			job.SubmissionID,
-			job.ChallengeID,
-			job.ChallengeTitle,
-			job.UserID,
-			fmt.Sprintf("%f", job.Latitude),
-			fmt.Sprintf("%f", job.Longitude),
-			job.CapturedAt,
-			robot,
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-		cmd := exec.CommandContext(ctx, "python3", args...)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		out, err := cmd.Output()
-		cancel()
-
-		record := func() map[string]any {
-			if err != nil {
-				errMsg := err.Error()
-				if s := stderr.String(); s != "" {
-					errMsg = s
-				}
-				metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
-				metrics.ActiveJobs.Dec()
-				metrics.PipelineDuration.Observe(time.Since(start).Seconds())
-				p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: errMsg})
-				hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "failed", 0))
-				if db.Pool != nil {
-					db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
-					if count, err := db.IncrementRetryCount(context.Background(), job.SubmissionID); err == nil && count >= 3 {
-						db.MarkDLQ(context.Background(), job.SubmissionID)
-					}
-				}
-				go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "failed", job.ChallengeTitle, 0)
-				return nil
-			}
-			var r map[string]any
-			if err := json.Unmarshal(out, &r); err != nil {
-				metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
-				metrics.ActiveJobs.Dec()
-				metrics.PipelineDuration.Observe(time.Since(start).Seconds())
-				p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: "invalid extractor output"})
-				hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "failed", 0))
-				if db.Pool != nil {
-					db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
-				}
-				go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "failed", job.ChallengeTitle, 0)
-				return nil
-			}
-			return r
-		}()
-		if record == nil {
-			continue
-		}
-
-		if isSynthetic(record) {
-			metrics.SubmissionsTotal.WithLabelValues("synthetic").Inc()
-			metrics.ActiveJobs.Dec()
-			metrics.PipelineDuration.Observe(time.Since(start).Seconds())
-			p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: "synthetic video detected"})
-			hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "synthetic", 0))
-			if db.Pool != nil {
-				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "synthetic", "", 0)
-			}
-			if isLocalPath(job.VideoPath) {
-				if err := os.Remove(job.VideoPath); err != nil {
-					log.Println("remove video:", err)
-				}
-			}
-			go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "synthetic", job.ChallengeTitle, 0)
-			continue
-		}
-
-		localPath, err := p.save(job.SubmissionID, record)
-		if err != nil {
-			metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
-			metrics.ActiveJobs.Dec()
-			metrics.PipelineDuration.Observe(time.Since(start).Seconds())
-			p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: err.Error()})
-			hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "failed", 0))
-			if db.Pool != nil {
-				db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
-			}
-			go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "failed", job.ChallengeTitle, 0)
-			continue
-		}
-
-		hmdfPath := localPath
-		if p.hmdfUpload != nil {
-			f, err := os.Open(localPath)
-			if err == nil {
-				if s3Path, err := p.hmdfUpload(job.SubmissionID, f); err == nil {
-					hmdfPath = s3Path
-				}
-				f.Close()
+		metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
+		metrics.ActiveJobs.Dec()
+		metrics.PipelineDuration.Observe(time.Since(start).Seconds())
+		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: errMsg})
+		hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "failed", 0))
+		if db.Pool != nil {
+			db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
+			if count, err := db.IncrementRetryCount(context.Background(), job.SubmissionID); err == nil && count >= 3 {
+				db.MarkDLQ(context.Background(), job.SubmissionID)
 			}
 		}
+		go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "failed", job.ChallengeTitle, 0)
+		return
+	}
 
+	var record map[string]any
+	if err := json.Unmarshal(out, &record); err != nil {
+		metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
+		metrics.ActiveJobs.Dec()
+		metrics.PipelineDuration.Observe(time.Since(start).Seconds())
+		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: "invalid extractor output"})
+		hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "failed", 0))
+		if db.Pool != nil {
+			db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
+		}
+		go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "failed", job.ChallengeTitle, 0)
+		return
+	}
+
+	if isSynthetic(record) {
+		metrics.SubmissionsTotal.WithLabelValues("synthetic").Inc()
+		metrics.ActiveJobs.Dec()
+		metrics.PipelineDuration.Observe(time.Since(start).Seconds())
+		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: "synthetic video detected"})
+		hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "synthetic", 0))
+		if db.Pool != nil {
+			db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "synthetic", "", 0)
+		}
 		if isLocalPath(job.VideoPath) {
 			if err := os.Remove(job.VideoPath); err != nil {
 				log.Println("remove video:", err)
 			}
 		}
+		go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "synthetic", job.ChallengeTitle, 0)
+		return
+	}
 
-		credits := creditsForDifficulty(job.ChallengeDifficulty)
-		qs := qualityScore(record)
-		extractorVersion, _ := record["hmdf_version"].(string)
-
-		metrics.SubmissionsTotal.WithLabelValues("done").Inc()
-		metrics.SubmissionsByRobot.WithLabelValues(robot).Inc()
-		metrics.QualityScore.Observe(qs)
+	localPath, err := p.save(job.SubmissionID, record)
+	if err != nil {
+		metrics.SubmissionsTotal.WithLabelValues("failed").Inc()
 		metrics.ActiveJobs.Dec()
 		metrics.PipelineDuration.Observe(time.Since(start).Seconds())
-		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusDone})
-		hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "done", credits))
+		p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusFailed, Error: err.Error()})
+		hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "failed", 0))
 		if db.Pool != nil {
-			db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "done", hmdfPath, credits)
-			db.SetSubmissionQuality(context.Background(), job.SubmissionID, qs, extractorVersion)
-			db.AddCredits(context.Background(), job.UserID, credits)
-			db.LogCreditTransaction(context.Background(), job.UserID, job.SubmissionID, "submission", credits)
-			db.IncrementChallengeSubmissions(context.Background(), job.ChallengeID)
-			go dispatchWebhooks(job.SubmissionID, job.ChallengeID, qs)
+			db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "failed", "", 0)
 		}
-		go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "done", job.ChallengeTitle, credits)
+		go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "failed", job.ChallengeTitle, 0)
+		return
 	}
+
+	hmdfPath := localPath
+	if p.hmdfUpload != nil {
+		f, err := os.Open(localPath)
+		if err == nil {
+			if s3Path, err := p.hmdfUpload(job.SubmissionID, f); err == nil {
+				hmdfPath = s3Path
+			}
+			f.Close()
+		}
+	}
+
+	if isLocalPath(job.VideoPath) {
+		if err := os.Remove(job.VideoPath); err != nil {
+			log.Println("remove video:", err)
+		}
+	}
+
+	credits := creditsForDifficulty(job.ChallengeDifficulty)
+	qs := qualityScore(record)
+	extractorVersion, _ := record["hmdf_version"].(string)
+
+	metrics.SubmissionsTotal.WithLabelValues("done").Inc()
+	metrics.SubmissionsByRobot.WithLabelValues(robot).Inc()
+	metrics.QualityScore.Observe(qs)
+	metrics.ActiveJobs.Dec()
+	metrics.PipelineDuration.Observe(time.Since(start).Seconds())
+	p.results.Store(job.SubmissionID, JobResult{SubmissionID: job.SubmissionID, Status: StatusDone})
+	hub.Default.Publish(job.SubmissionID, hubEvent(job.SubmissionID, "done", credits))
+	if db.Pool != nil {
+		db.UpdateSubmissionStatus(context.Background(), job.SubmissionID, "done", hmdfPath, credits)
+		db.SetSubmissionQuality(context.Background(), job.SubmissionID, qs, extractorVersion)
+		db.AddCredits(context.Background(), job.UserID, credits)
+		db.LogCreditTransaction(context.Background(), job.UserID, job.SubmissionID, "submission", credits)
+		db.IncrementChallengeSubmissions(context.Background(), job.ChallengeID)
+		go dispatchWebhooks(job.SubmissionID, job.ChallengeID, qs)
+	}
+	go notifications.SendSubmissionResult(job.UserEmail, job.UserName, "done", job.ChallengeTitle, credits)
 }
 
 func (p *Pipeline) save(submissionID string, data map[string]any) (string, error) {
 	if err := os.MkdirAll(p.outDir, 0755); err != nil {
 		return "", err
 	}
-
 	dst := filepath.Join(p.outDir, submissionID+".hmdf.json.gz")
-
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	if err := json.NewEncoder(gz).Encode(data); err != nil {
@@ -274,7 +279,6 @@ func (p *Pipeline) save(submissionID string, data map[string]any) (string, error
 	if err := gz.Close(); err != nil {
 		return "", err
 	}
-
 	if err := os.WriteFile(dst, buf.Bytes(), 0644); err != nil {
 		return "", err
 	}
@@ -292,6 +296,39 @@ func isSynthetic(record map[string]any) bool {
 	}
 	synthetic, _ := sd["synthetic"].(bool)
 	return synthetic
+}
+
+func qualityScore(record map[string]any) float64 {
+	frames, _ := record["frames"].([]any)
+	if len(frames) == 0 {
+		return 0
+	}
+	withMotorState := 0
+	for _, f := range frames {
+		fr, ok := f.(map[string]any)
+		if !ok {
+			continue
+		}
+		ms, _ := fr["motor_state"].(map[string]any)
+		q, _ := ms["q"].([]any)
+		if len(q) > 0 {
+			withMotorState++
+		}
+	}
+	coverage := float64(withMotorState) / float64(len(frames))
+	fps, _ := record["fps"].(float64)
+	if fps == 0 {
+		fps = 30
+	}
+	fpsScore := fps / 30.0
+	if fpsScore > 1 {
+		fpsScore = 1
+	}
+	durationScore := float64(len(frames)) / 300.0
+	if durationScore > 1 {
+		durationScore = 1
+	}
+	return (coverage + fpsScore + durationScore) / 3.0
 }
 
 var webhookClient = &http.Client{Timeout: 10 * time.Second}
@@ -349,37 +386,4 @@ func sendWebhook(url, secretHash, datasetID string, payload []byte) {
 			}
 		}
 	}
-}
-
-func qualityScore(record map[string]any) float64 {
-	frames, _ := record["frames"].([]any)
-	if len(frames) == 0 {
-		return 0
-	}
-	withMotorState := 0
-	for _, f := range frames {
-		fr, ok := f.(map[string]any)
-		if !ok {
-			continue
-		}
-		ms, _ := fr["motor_state"].(map[string]any)
-		q, _ := ms["q"].([]any)
-		if len(q) > 0 {
-			withMotorState++
-		}
-	}
-	coverage := float64(withMotorState) / float64(len(frames))
-	fps, _ := record["fps"].(float64)
-	if fps == 0 {
-		fps = 30
-	}
-	fpsScore := fps / 30.0
-	if fpsScore > 1 {
-		fpsScore = 1
-	}
-	durationScore := float64(len(frames)) / 300.0
-	if durationScore > 1 {
-		durationScore = 1
-	}
-	return (coverage + fpsScore + durationScore) / 3.0
 }

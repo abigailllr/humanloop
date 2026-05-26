@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/abigailtech/humanloop/backend/db"
 	"github.com/abigailtech/humanloop/backend/middleware"
@@ -48,7 +49,7 @@ func RedeemReferral(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := db.RedeemReferral(r.Context(), userID, body.Code); err != nil {
+	if err := db.RedeemReferral(r.Context(), userID, strings.ToUpper(body.Code)); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
