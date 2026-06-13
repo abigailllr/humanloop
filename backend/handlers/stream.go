@@ -13,7 +13,11 @@ import (
 
 func StreamSubmission(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	userID := r.Context().Value(middleware.UserIDKey).(string)
+	userID, ok := middleware.UserID(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {

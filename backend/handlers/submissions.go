@@ -15,7 +15,11 @@ var Pipeline *pipeline.Pipeline
 
 func GetSubmission(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	userID := r.Context().Value(middleware.UserIDKey).(string)
+	userID, ok := middleware.UserID(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 
 	if result, ok := Pipeline.Result(id); ok {
@@ -48,7 +52,11 @@ func GetSubmission(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetUserSubmissions(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(middleware.UserIDKey).(string)
+	userID, ok := middleware.UserID(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 
 	if db.Pool == nil {

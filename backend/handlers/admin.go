@@ -105,6 +105,7 @@ func AdminRejectSubmission(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminTagSubmission(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	id := r.PathValue("id")
 	var body struct {
 		Tags []string `json:"tags"`

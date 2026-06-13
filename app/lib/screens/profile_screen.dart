@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../models/submission.dart';
 import '../theme/colors.dart';
 import '../theme/text_styles.dart';
 import '../widgets/submission_card.dart';
+import 'login_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -138,6 +141,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     },
                   ),
                 ),
+              ),
+              const SliverPadding(
+                padding: EdgeInsets.fromLTRB(24, 32, 24, 0),
+                sliver: SliverToBoxAdapter(child: _SettingsCard()),
               ),
               const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
             ],
@@ -485,6 +492,104 @@ class _ReferralCardState extends ConsumerState<_ReferralCard> {
             Text(_msg!, style: TextStyle(fontSize: 13, color: _msg!.contains('earned') ? AppColors.success : AppColors.danger)),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _SettingsCard extends ConsumerWidget {
+  const _SettingsCard();
+
+  Future<void> _open(String url) async {
+    final uri = Uri.parse(url);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  void _toLogin(BuildContext context) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+  }
+
+  Future<void> _signOut(BuildContext context, WidgetRef ref) async {
+    await ref.read(authProvider.notifier).signOut();
+    if (context.mounted) _toLogin(context);
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete account'),
+        content: const Text('This permanently deletes your account and all your data. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final token = ref.read(authProvider).token ?? '';
+    final ok = await ApiService.deleteAccount(token: token);
+    if (!context.mounted) return;
+    if (ok) {
+      await _signOut(context, ref);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete account. Please try again later.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        children: [
+          _SettingsRow(icon: Icons.shield_outlined, label: 'Privacy Policy', onTap: () => _open(AppConfig.privacyPolicyUrl)),
+          _SettingsRow(icon: Icons.description_outlined, label: 'Terms of Service', onTap: () => _open(AppConfig.termsUrl)),
+          _SettingsRow(icon: Icons.logout_rounded, label: 'Sign Out', onTap: () => _signOut(context, ref)),
+          _SettingsRow(icon: Icons.delete_outline_rounded, label: 'Delete Account', danger: true, onTap: () => _confirmDelete(context, ref)),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool danger;
+  const _SettingsRow({required this.icon, required this.label, required this.onTap, this.danger = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? AppColors.danger : AppColors.textPrimary;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: danger ? AppColors.danger : AppColors.textSecondary),
+            const SizedBox(width: 14),
+            Expanded(child: Text(label, style: AppTextStyles.bodyMedium.copyWith(color: color, fontWeight: FontWeight.w600))),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.textTertiary),
+          ],
+        ),
       ),
     );
   }

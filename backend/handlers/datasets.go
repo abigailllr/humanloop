@@ -193,6 +193,16 @@ func DownloadHMDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dataset, err := db.GetDataset(r.Context(), datasetID)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if dataset.ChallengeID != "" && dataset.ChallengeID != s.ChallengeID {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
 	if strings.HasPrefix(s.HmdfPath, "s3://") {
 		s3store, ok := Store.(*storage.S3Store)
 		if !ok {
@@ -209,7 +219,12 @@ func DownloadHMDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f, err := os.Open(s.HmdfPath)
+	safe, ok := safeLocalHMDFPath(s.HmdfPath)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	f, err := os.Open(safe)
 	if err != nil {
 		http.Error(w, "file not found", http.StatusNotFound)
 		return

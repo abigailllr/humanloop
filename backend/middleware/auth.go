@@ -98,6 +98,21 @@ func jwtSecret() string {
 	return os.Getenv("JWT_SECRET")
 }
 
+func UserID(r *http.Request) (string, bool) {
+	v, ok := r.Context().Value(UserIDKey).(string)
+	return v, ok && v != ""
+}
+
+func UserEmail(r *http.Request) string {
+	v, _ := r.Context().Value(UserEmailKey).(string)
+	return v
+}
+
+func UserName(r *http.Request) string {
+	v, _ := r.Context().Value(UserNameKey).(string)
+	return v
+}
+
 func stringClaim(claims jwt.MapClaims, key string) string {
 	v, _ := claims[key].(string)
 	return v

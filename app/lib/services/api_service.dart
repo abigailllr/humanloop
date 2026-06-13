@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config.dart';
 import '../models/challenge.dart';
 import '../models/submission.dart';
 import '../models/user.dart';
@@ -12,7 +13,7 @@ class AuthTokens {
 }
 
 class ApiService {
-  static const _base = String.fromEnvironment('API_URL', defaultValue: 'http://localhost:8080');
+  static const _base = AppConfig.apiBaseUrl;
   static String get baseUrl => _base;
   static void Function()? onUnauthorized;
 
@@ -72,6 +73,19 @@ class ApiService {
         body: jsonEncode({'refresh_token': refreshToken}),
       );
     } catch (_) {}
+  }
+
+  static Future<bool> deleteAccount({required String token}) async {
+    try {
+      final res = await http.delete(
+        Uri.parse('$_base/v1/account'),
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 401) { onUnauthorized?.call(); return false; }
+      return res.statusCode == 200 || res.statusCode == 204;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<List<Challenge>> getChallenges() async {

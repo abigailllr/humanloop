@@ -47,9 +47,13 @@ func computeBadges(doneCount int, avgQuality float64, totalCredits int) []string
 }
 
 func GetProfile(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(middleware.UserIDKey).(string)
-	name := r.Context().Value(middleware.UserNameKey).(string)
-	email := r.Context().Value(middleware.UserEmailKey).(string)
+	userID, ok := middleware.UserID(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	name := middleware.UserName(r)
+	email := middleware.UserEmail(r)
 
 	w.Header().Set("Content-Type", "application/json")
 

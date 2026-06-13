@@ -30,7 +30,11 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxVideoSize+4*1024)
 
 	challengeID := r.PathValue("challengeId")
-	userID := r.Context().Value(middleware.UserIDKey).(string)
+	userID, ok := middleware.UserID(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	if db.Pool != nil {
 		if count, err := db.CountSubmissionsToday(r.Context(), userID); err == nil && count >= 20 {
@@ -121,8 +125,8 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 
 	title := challengeTitle(challengeID)
 	difficulty := challengeDifficulty(challengeID)
-	userEmail := r.Context().Value(middleware.UserEmailKey).(string)
-	userName := r.Context().Value(middleware.UserNameKey).(string)
+	userEmail := middleware.UserEmail(r)
+	userName := middleware.UserName(r)
 
 	submission := models.Submission{
 		ID:             uuid.New().String(),
