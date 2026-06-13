@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../main.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/token_store.dart';
 
 class AuthState {
   final AppUser? user;
@@ -27,14 +27,18 @@ class AuthState {
 class AuthNotifier extends Notifier<AuthState> {
   @override
   AuthState build() {
-    final prefs = ref.read(prefsProvider);
-    final accessToken = prefs.getString('auth_token');
-    final storedRefresh = prefs.getString('refresh_token');
-    if (accessToken != null) {
-      Future.microtask(() => _restoreFromToken(accessToken, storedRefresh));
-      return AuthState(token: accessToken, refreshToken: storedRefresh);
+    Future.microtask(_init);
+    return const AuthState(loading: true);
+  }
+
+  Future<void> _init() async {
+    final accessToken = await TokenStore.readAccess();
+    final storedRefresh = await TokenStore.readRefresh();
+    if (accessToken == null) {
+      state = const AuthState();
+      return;
     }
-    return const AuthState();
+    await _restoreFromToken(accessToken, storedRefresh);
   }
 
   Future<void> _restoreFromToken(String token, String? refreshToken) async {
@@ -50,17 +54,13 @@ class AuthNotifier extends Notifier<AuthState> {
       if (tokens != null) {
         final profile = await ApiService.getProfile(token: tokens.accessToken);
         if (profile.isNotEmpty) {
-          final prefs = ref.read(prefsProvider);
-          await prefs.setString('auth_token', tokens.accessToken);
-          await prefs.setString('refresh_token', tokens.refreshToken);
+          await TokenStore.save(tokens.accessToken, tokens.refreshToken);
           state = AuthState(user: AppUser.fromJson(profile), token: tokens.accessToken, refreshToken: tokens.refreshToken);
           return;
         }
       }
     }
-    final prefs = ref.read(prefsProvider);
-    await prefs.remove('auth_token');
-    await prefs.remove('refresh_token');
+    await TokenStore.clear();
     state = const AuthState();
   }
 
@@ -68,9 +68,7 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(loading: true);
     try {
       final result = await AuthService.signInWithGoogle();
-      final prefs = ref.read(prefsProvider);
-      await prefs.setString('auth_token', result.tokens.accessToken);
-      await prefs.setString('refresh_token', result.tokens.refreshToken);
+      await TokenStore.save(result.tokens.accessToken, result.tokens.refreshToken);
       state = AuthState(user: result.user, token: result.tokens.accessToken, refreshToken: result.tokens.refreshToken);
     } catch (e) {
       state = state.copyWith(loading: false);
@@ -82,9 +80,7 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(loading: true);
     try {
       final result = await AuthService.signInWithApple();
-      final prefs = ref.read(prefsProvider);
-      await prefs.setString('auth_token', result.tokens.accessToken);
-      await prefs.setString('refresh_token', result.tokens.refreshToken);
+      await TokenStore.save(result.tokens.accessToken, result.tokens.refreshToken);
       state = AuthState(user: result.user, token: result.tokens.accessToken, refreshToken: result.tokens.refreshToken);
     } catch (e) {
       state = state.copyWith(loading: false);
@@ -104,9 +100,7 @@ class AuthNotifier extends Notifier<AuthState> {
     if (token != null && refresh != null) {
       await ApiService.revokeToken(token, refresh);
     }
-    final prefs = ref.read(prefsProvider);
-    await prefs.remove('auth_token');
-    await prefs.remove('refresh_token');
+    await TokenStore.clear();
     state = const AuthState();
   }
 }

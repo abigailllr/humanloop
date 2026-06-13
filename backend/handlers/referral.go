@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -10,7 +11,11 @@ import (
 )
 
 func GetReferral(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(middleware.UserIDKey).(string)
+	userID, ok := middleware.UserID(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 
 	if db.Pool == nil {
@@ -35,7 +40,11 @@ func GetReferral(w http.ResponseWriter, r *http.Request) {
 
 func RedeemReferral(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4*1024)
-	userID := r.Context().Value(middleware.UserIDKey).(string)
+	userID, ok := middleware.UserID(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var body struct {
 		Code string `json:"code"`
@@ -51,7 +60,8 @@ func RedeemReferral(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.RedeemReferral(r.Context(), userID, strings.ToUpper(body.Code)); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		log.Printf("redeem referral failed for %s: %v", userID, err)
+		http.Error(w, "invalid referral code", http.StatusBadRequest)
 		return
 	}
 

@@ -7,11 +7,37 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/abigailtech/humanloop/backend/db"
 )
+
+func extractedBaseDir() string {
+	if d := os.Getenv("EXTRACTED_DIR"); d != "" {
+		return d
+	}
+	return "./data/extracted"
+}
+
+func safeLocalHMDFPath(path string) (string, bool) {
+	if path == "" || strings.HasPrefix(path, "s3://") {
+		return "", false
+	}
+	base, err := filepath.Abs(extractedBaseDir())
+	if err != nil {
+		return "", false
+	}
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return "", false
+	}
+	if abs != base && !strings.HasPrefix(abs, base+string(os.PathSeparator)) {
+		return "", false
+	}
+	return abs, true
+}
 
 func ExportData(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -141,7 +167,11 @@ func readHMDF(path string) (map[string]any, error) {
 	if strings.HasPrefix(path, "s3://") {
 		return nil, fmt.Errorf("s3 hmdf not available for local export")
 	}
-	f, err := os.Open(path)
+	safe, ok := safeLocalHMDFPath(path)
+	if !ok {
+		return nil, fmt.Errorf("invalid hmdf path")
+	}
+	f, err := os.Open(safe)
 	if err != nil {
 		return nil, err
 	}

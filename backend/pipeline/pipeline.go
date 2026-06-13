@@ -6,11 +6,13 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -331,7 +333,34 @@ func qualityScore(record map[string]any) float64 {
 	return (coverage + fpsScore + durationScore) / 3.0
 }
 
-var webhookClient = &http.Client{Timeout: 10 * time.Second}
+var webhookClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+			if err != nil || len(ips) == 0 {
+				return nil, fmt.Errorf("webhook host resolution failed")
+			}
+			var target net.IP
+			for _, ip := range ips {
+				if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+					ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+					return nil, fmt.Errorf("blocked non-public webhook address")
+				}
+				if target == nil {
+					target = ip
+				}
+			}
+			d := &net.Dialer{Timeout: 5 * time.Second}
+			return tls.DialWithDialer(d, network, net.JoinHostPort(target.String(), port), &tls.Config{ServerName: host})
+		},
+	},
+}
 
 func dispatchWebhooks(submissionID, challengeID string, qs float64) {
 	if db.Pool == nil {

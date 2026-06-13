@@ -10,10 +10,11 @@ func Security(next http.Handler) http.Handler {
 		origin := r.Header.Get("Origin")
 		allowed := allowedOrigin()
 
+		w.Header().Add("Vary", "Origin")
 		if origin != "" {
 			if allowed == "*" || origin == allowed {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-API-Key, X-Buyer-Key")
 			}
 		}
@@ -27,6 +28,7 @@ func Security(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'")
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 
 		next.ServeHTTP(w, r)
 	})

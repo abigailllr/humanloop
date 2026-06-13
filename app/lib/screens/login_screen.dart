@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config.dart';
 import '../theme/colors.dart';
 import '../theme/text_styles.dart';
 import '../providers/auth_provider.dart';
@@ -77,11 +80,7 @@ class LoginScreen extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: 32),
-              Text(
-                'By continuing, you agree to our Terms of Service\nand Privacy Policy.',
-                style: AppTextStyles.caption.copyWith(height: 1.5),
-                textAlign: TextAlign.center,
-              ),
+              const _LegalText(),
               if (kDebugMode) ...[
                 const SizedBox(height: 16),
                 TextButton(
@@ -101,6 +100,55 @@ class LoginScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _LegalText extends StatefulWidget {
+  const _LegalText();
+
+  @override
+  State<_LegalText> createState() => _LegalTextState();
+}
+
+class _LegalTextState extends State<_LegalText> {
+  late final TapGestureRecognizer _terms;
+  late final TapGestureRecognizer _privacy;
+
+  @override
+  void initState() {
+    super.initState();
+    _terms = TapGestureRecognizer()..onTap = () => _open(AppConfig.termsUrl);
+    _privacy = TapGestureRecognizer()..onTap = () => _open(AppConfig.privacyPolicyUrl);
+  }
+
+  Future<void> _open(String url) async {
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  void dispose() {
+    _terms.dispose();
+    _privacy.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final base = AppTextStyles.caption.copyWith(height: 1.5);
+    final link = base.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600);
+    return Text.rich(
+      TextSpan(
+        style: base,
+        children: [
+          const TextSpan(text: 'By continuing, you agree to our '),
+          TextSpan(text: 'Terms of Service', style: link, recognizer: _terms),
+          const TextSpan(text: ' and '),
+          TextSpan(text: 'Privacy Policy', style: link, recognizer: _privacy),
+          const TextSpan(text: '.'),
+        ],
+      ),
+      textAlign: TextAlign.center,
     );
   }
 }

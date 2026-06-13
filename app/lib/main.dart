@@ -38,7 +38,9 @@ class HumanLoopApp extends ConsumerWidget {
     final hasOnboarded = prefs.getBool('onboarded') ?? false;
 
     Widget home;
-    if (auth.isSignedIn) {
+    if (auth.loading) {
+      home = const _SplashScreen();
+    } else if (auth.isSignedIn) {
       home = const RootNav();
     } else if (hasOnboarded) {
       home = const LoginScreen();
@@ -60,6 +62,32 @@ class HumanLoopApp extends ConsumerWidget {
         scaffoldBackgroundColor: AppColors.background,
       ),
       home: home,
+    );
+  }
+}
+
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(24)),
+              child: const Icon(Icons.precision_manufacturing_rounded, color: Colors.white, size: 44),
+            ),
+            const SizedBox(height: 32),
+            const CircularProgressIndicator(color: AppColors.primary),
+          ],
+        ),
+      ),
     );
   }
 }

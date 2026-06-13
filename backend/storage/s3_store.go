@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -44,7 +45,14 @@ func (s *S3Store) BaseDir() string {
 }
 
 func (s *S3Store) PresignGetHMDF(hmdfPath string, ttl time.Duration) (string, error) {
-	key := strings.TrimPrefix(hmdfPath, "s3://"+s.bucket+"/")
+	prefix := "s3://" + s.bucket + "/"
+	if !strings.HasPrefix(hmdfPath, prefix) {
+		return "", fmt.Errorf("invalid hmdf path")
+	}
+	key := strings.TrimPrefix(hmdfPath, prefix)
+	if key == "" || strings.HasPrefix(key, "/") || strings.Contains(key, "..") {
+		return "", fmt.Errorf("invalid hmdf key")
+	}
 	presignClient := s3.NewPresignClient(s.client)
 	req, err := presignClient.PresignGetObject(context.Background(), &s3.GetObjectInput{
 		Bucket: &s.bucket,

@@ -2,7 +2,8 @@ package db
 
 import (
 	"context"
-	"fmt"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abigailtech/humanloop/backend/models"
 )
@@ -32,16 +33,24 @@ func AddCredits(ctx context.Context, userID string, amount int) error {
 }
 
 func GetLeaderboard(ctx context.Context, period string) ([]models.User, error) {
-	var filter string
+	const base = `SELECT id, name, credits, submissions FROM users`
+	const order = ` ORDER BY credits DESC LIMIT 100`
+	const recent = ` WHERE id IN (SELECT DISTINCT user_id FROM submissions WHERE status='done' AND created_at > NOW() - ($1 || ' days')::interval)`
+
+	var query string
+	var rows pgx.Rows
+	var err error
 	switch period {
 	case "week":
-		filter = "WHERE id IN (SELECT DISTINCT user_id FROM submissions WHERE status='done' AND created_at > NOW() - INTERVAL '7 days')"
+		query = base + recent + order
+		rows, err = Pool.Query(ctx, query, "7")
 	case "month":
-		filter = "WHERE id IN (SELECT DISTINCT user_id FROM submissions WHERE status='done' AND created_at > NOW() - INTERVAL '30 days')"
+		query = base + recent + order
+		rows, err = Pool.Query(ctx, query, "30")
+	default:
+		query = base + order
+		rows, err = Pool.Query(ctx, query)
 	}
-	rows, err := Pool.Query(ctx, fmt.Sprintf(
-		`SELECT id, name, credits, submissions FROM users %s ORDER BY credits DESC LIMIT 100`, filter,
-	))
 	if err != nil {
 		return nil, err
 	}

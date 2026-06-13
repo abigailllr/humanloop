@@ -8,7 +8,11 @@ import (
 )
 
 func DeleteAccount(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value(middleware.UserIDKey).(string)
+	userID, ok := middleware.UserID(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	if db.Pool == nil {
 		http.Error(w, "db unavailable", http.StatusServiceUnavailable)
 		return

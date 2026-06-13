@@ -4,13 +4,37 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"net"
 	"net/http"
+	"net/url"
 
 	"github.com/google/uuid"
 
 	"github.com/abigailtech/humanloop/backend/db"
 	"github.com/abigailtech/humanloop/backend/models"
 )
+
+func validWebhookURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return false
+	}
+	host := u.Hostname()
+	if host == "" {
+		return false
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil || len(ips) == 0 {
+		return false
+	}
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return false
+		}
+	}
+	return true
+}
 
 func CreateWebhook(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
@@ -20,6 +44,10 @@ func CreateWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" {
 		http.Error(w, "url required", http.StatusBadRequest)
+		return
+	}
+	if !validWebhookURL(body.URL) {
+		http.Error(w, "url must be a public https endpoint", http.StatusBadRequest)
 		return
 	}
 	if db.Pool == nil {
